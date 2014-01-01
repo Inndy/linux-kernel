@@ -50,6 +50,9 @@
 #include <asm/tlb.h>
 #include <asm/div64.h>
 #include "internal.h"
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+#include <asm/brcmstb/common/brcmstb.h>
+#endif
 
 #define LOAD_INT(x) ((x) >> FSHIFT)
 #define LOAD_FRAC(x) LOAD_INT(((x) & (FIXED_1-1)) * 100)
@@ -66,6 +69,7 @@ extern int get_filesystem_list(char *);
 extern int get_exec_domain_list(char *);
 extern int get_dma_list(char *);
 extern int get_locks_status (char *, char **, off_t, int);
+
 
 static int proc_calc_metrics(char *page, char **start, off_t off,
 				 int count, int *eof, int len)
@@ -198,6 +202,22 @@ static int meminfo_read_proc(char *page, char **start, off_t off,
 		vmi.used >> 10,
 		vmi.largest_chunk >> 10
 		);
+#if defined ( CONFIG_MIPS_BCM97438 )
+        len += sprintf(page + len,
+               "Node0Free:     %8lu kB\n"
+               "Node1Free:     %8lu kB\n",
+               K(NODE_DATA(0)->node_zones[ZONE_DMA].free_pages),
+               K(NODE_DATA(1)->node_zones[ZONE_NORMAL].free_pages));
+#elif defined ( CONFIG_MIPS_BCM7440 )
+
+        len += sprintf(page + len,
+               "Node0Free:     %8lu kB\n"
+               "Node1Free:     %8lu kB\n",
+               K(NODE_DATA(0)->node_zones[ZONE_DMA].free_pages),
+               K(NODE_DATA(1)->node_zones[ZONE_NORMAL].free_pages));
+
+#endif
+
 
 		len += hugetlb_report_meminfo(page + len);
 
@@ -404,6 +424,35 @@ static int show_stat(struct seq_file *p, void *v)
 	return 0;
 }
 
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined (CONFIG_MIPS_BCM7440 )
+static int bcm_bmem_read_proc(char *page, char **start, off_t off,
+                                int count, int *eof, void *data)
+{
+	int len = 0;
+	int idx = 0;
+	int i;
+	phys_t addr[4] = {0,0,0,0};    /* start of memory segment */
+	phys_t size[4] = {0,0,0,0};    /* size of memory segment */
+
+	for (i = 0; i < 4 && idx != NILL; i++){
+		idx = si_bootmem_reserved(idx, &addr[i], &size[i]);
+	}
+
+	len = sprintf(page,
+			"BmemAddress[0]: 0x%08lx    BmemSize[0]: 0x%08lx\n"
+			"BmemAddress[1]: 0x%08lx    BmemSize[1]: 0x%08lx\n"
+			"BmemAddress[2]: 0x%08lx    BmemSize[2]: 0x%08lx\n"
+			"BmemAddress[3]: 0x%08lx    BmemSize[3]: 0x%08lx\n",
+			(unsigned int)addr[0], (unsigned int)size[0],
+			(unsigned int)addr[1], (unsigned int)size[1],
+			(unsigned int)addr[2], (unsigned int)size[2],
+			(unsigned int)addr[3], (unsigned int)size[3]);
+
+	return proc_calc_metrics(page, start, off, count, eof, len);
+}
+#endif
+
+
 static int stat_open(struct inode *inode, struct file *file)
 {
 	unsigned size = 4096 * (1 + num_possible_cpus() / 32);
@@ -556,21 +605,26 @@ void __init proc_misc_init(void)
 		char *name;
 		int (*read_proc)(char*,char**,off_t,int,int*,void*);
 	} *p, simple_ones[] = {
-		{"loadavg",     loadavg_read_proc},
+		{"loadavg", loadavg_read_proc},
 		{"uptime",	uptime_read_proc},
 		{"meminfo",	meminfo_read_proc},
 		{"version",	version_read_proc},
 #ifdef CONFIG_PROC_HARDWARE
-		{"hardware",	hardware_read_proc},
+		{"hardware", hardware_read_proc},
 #endif
 #ifdef CONFIG_STRAM_PROC
-		{"stram",	stram_read_proc},
+		{"stram", stram_read_proc},
 #endif
 		{"devices",	devices_read_proc},
 		{"filesystems",	filesystems_read_proc},
 		{"cmdline",	cmdline_read_proc},
-		{"locks",	locks_read_proc},
+		{"locks", locks_read_proc},
 		{"execdomains",	execdomains_read_proc},
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+		{"bmem", bcm_bmem_read_proc},
+#endif
+
+
 		{NULL,}
 	};
 	for (p = simple_ones; p->name; p++)

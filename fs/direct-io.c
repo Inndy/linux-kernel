@@ -352,6 +352,11 @@ static void dio_bio_submit(struct dio *dio)
 	spin_unlock_irqrestore(&dio->bio_lock, flags);
 	if (dio->is_async && dio->rw == READ)
 		bio_set_pages_dirty(bio);
+
+#if defined (CONFIG_MIPS_BCM7440)
+	set_bit(BIO_DIRECT, &bio->bi_flags);
+#endif
+
 	submit_bio(dio->rw, bio);
 
 	dio->bio = NULL;
@@ -1016,7 +1021,7 @@ direct_io_worker(int rw, struct kiocb *iocb, struct inode *inode,
 		}
 		dio->total_pages += (bytes + PAGE_SIZE - 1) / PAGE_SIZE;
 		dio->curr_user_address = user_addr;
-	
+
 		ret = do_direct_IO(dio);
 
 		dio->result += iov[seg].iov_len -
@@ -1230,6 +1235,9 @@ __blockdev_direct_IO(int rw, struct kiocb *iocb, struct inode *inode,
 				reader_with_isem = 1;
 			}
 
+#if defined (CONFIG_MIPS_BCM7440)
+			set_bit(AS_DIRECT, &mapping->flags);
+#endif
 			retval = filemap_write_and_wait_range(mapping, offset,
 							      end - 1);
 			if (retval) {

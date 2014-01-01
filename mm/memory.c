@@ -941,7 +941,7 @@ int get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 		}
 
 		if (!vma || (vma->vm_flags & VM_IO)
-				|| !(flags & vma->vm_flags))
+				|| !(flags & vma->vm_flags)) 
 			return i ? : -EFAULT;
 
 		if (is_vm_hugetlb_page(vma)) {
@@ -1110,7 +1110,7 @@ static int remap_pte_range(struct mm_struct *mm, pmd_t *pmd,
 		return -ENOMEM;
 	do {
 		BUG_ON(!pte_none(*pte));
-		if (!pfn_valid(pfn) || PageReserved(pfn_to_page(pfn)))
+		if (!pfn_valid(pfn) || PageReserved(pfn_to_page(pfn))) 
 			set_pte_at(mm, addr, pte, pfn_pte(pfn, prot));
 		pfn++;
 	} while (pte++, addr += PAGE_SIZE, addr != end);
@@ -1125,14 +1125,14 @@ static inline int remap_pmd_range(struct mm_struct *mm, pud_t *pud,
 	pmd_t *pmd;
 	unsigned long next;
 
-	pfn -= addr >> PAGE_SHIFT;
+	pfn -= (addr >> PAGE_SHIFT) & PAGE_SHIFT_MASK;
 	pmd = pmd_alloc(mm, pud, addr);
 	if (!pmd)
 		return -ENOMEM;
 	do {
 		next = pmd_addr_end(addr, end);
 		if (remap_pte_range(mm, pmd, addr, next,
-				pfn + (addr >> PAGE_SHIFT), prot))
+				pfn + ((addr >> PAGE_SHIFT) & PAGE_SHIFT_MASK), prot))
 			return -ENOMEM;
 	} while (pmd++, addr = next, addr != end);
 	return 0;
@@ -1145,14 +1145,14 @@ static inline int remap_pud_range(struct mm_struct *mm, pgd_t *pgd,
 	pud_t *pud;
 	unsigned long next;
 
-	pfn -= addr >> PAGE_SHIFT;
+	pfn -= (addr >> PAGE_SHIFT) & PAGE_SHIFT_MASK;
 	pud = pud_alloc(mm, pgd, addr);
 	if (!pud)
 		return -ENOMEM;
 	do {
 		next = pud_addr_end(addr, end);
 		if (remap_pmd_range(mm, pud, addr, next,
-				pfn + (addr >> PAGE_SHIFT), prot))
+				pfn + ((addr >> PAGE_SHIFT) & PAGE_SHIFT_MASK), prot))
 			return -ENOMEM;
 	} while (pud++, addr = next, addr != end);
 	return 0;
@@ -1164,10 +1164,12 @@ int remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 {
 	pgd_t *pgd;
 	unsigned long next;
-	unsigned long end = addr + size;
+	unsigned long end = addr + PAGE_ALIGN(size);
 	struct mm_struct *mm = vma->vm_mm;
 	int err;
 
+
+#ifndef CONFIG_MIPS_BRCM97XXX
 	/*
 	 * Physically remapped pages are special. Tell the
 	 * rest of the world about it:
@@ -1178,15 +1180,29 @@ int remap_pfn_range(struct vm_area_struct *vma, unsigned long addr,
 	 */
 	vma->vm_flags |= VM_IO | VM_RESERVED;
 
+#else
+	/* 
+	 * THT 9/21/05: PR17241: Turning VM_IO on would prevent Direct-IO 
+	 * from mmap()ing the pages, so only do this for pages beyond
+	 * real memory
+	 */
+	vma->vm_flags |= VM_RESERVED;
+
+	if (pfn >= (((unsigned long) __pa((unsigned long) high_memory)) >> PAGE_SHIFT))
+		vma->vm_flags |= VM_IO;
+ 
+#endif
+
 	BUG_ON(addr >= end);
-	pfn -= addr >> PAGE_SHIFT;
+
+	pfn -= (addr >> PAGE_SHIFT) & PAGE_SHIFT_MASK;
 	pgd = pgd_offset(mm, addr);
 	flush_cache_range(vma, addr, end);
 	spin_lock(&mm->page_table_lock);
 	do {
 		next = pgd_addr_end(addr, end);
 		err = remap_pud_range(mm, pgd, addr, next,
-				pfn + (addr >> PAGE_SHIFT), prot);
+				pfn + ((addr >> PAGE_SHIFT) & PAGE_SHIFT_MASK), prot);
 		if (err)
 			break;
 	} while (pgd++, addr = next, addr != end);

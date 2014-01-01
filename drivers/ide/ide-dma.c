@@ -90,6 +90,14 @@
 #include <asm/io.h>
 #include <asm/irq.h>
 
+#ifdef CONFIG_BLK_DEV_IDE_BCM7XXX
+#include "legacy/bcm71xx_ide.h"
+#endif
+
+#ifdef CONFIG_BLK_DEV_IDE_BCM7XXX_PROC
+#include <linux/proc_fs.h>
+#endif
+
 struct drive_list_entry {
 	const char *id_model;
 	const char *id_firmware;
@@ -193,7 +201,7 @@ ide_startstop_t ide_dma_intr (ide_drive_t *drive)
 
 EXPORT_SYMBOL_GPL(ide_dma_intr);
 
-#ifdef CONFIG_BLK_DEV_IDEDMA_PCI
+#if defined( CONFIG_BLK_DEV_IDEDMA_PCI ) || defined( CONFIG_BLK_DEV_IDE_BCM7XXX )
 /**
  *	ide_build_sglist	-	map IDE scatter gather for DMA I/O
  *	@drive: the drive to build the DMA table for
@@ -479,7 +487,7 @@ int __ide_dma_off (ide_drive_t *drive)
 
 EXPORT_SYMBOL(__ide_dma_off);
 
-#ifdef CONFIG_BLK_DEV_IDEDMA_PCI
+#if defined( CONFIG_BLK_DEV_IDEDMA_PCI ) || defined( CONFIG_BLK_DEV_IDE_BCM7XXX )
 /**
  *	__ide_dma_host_on	-	Enable DMA on a host
  *	@drive: drive to enable for DMA
@@ -767,10 +775,57 @@ bug_dma_off:
 
 EXPORT_SYMBOL(ide_dma_verbose);
 
-#ifdef CONFIG_BLK_DEV_IDEDMA_PCI
+#if defined( CONFIG_BLK_DEV_IDEDMA_PCI ) || defined( CONFIG_BLK_DEV_IDE_BCM7XXX )
 int __ide_dma_lostirq (ide_drive_t *drive)
 {
 	printk("%s: DMA interrupt recovery\n", drive->name);
+#if defined ( CONFIG_MIPS_BCM7440 )
+#include <asm/brcmstb/brcm97440a0/bchp_ide.h>
+
+        /*
+        ** Turn off interrupt blocking
+        ** (set int_blkdis bit in the 7440 IDE Interrupt Mask Register)
+        */
+        *(unsigned int*)(BCHP_IDE_IDEIntMsk) |= 0x100;
+
+        /*
+        ** Clear P_StartStop bit in the 7440 IDE Primary Bus Master
+        ** Command/Status Register
+        **
+        ** - Stop outstanding device-to-host DMA transaction.
+        */
+        *(unsigned int*)(BCHP_IDE_IDEPriBMCmdStat) &= ~0x1;
+
+        /*
+        ** Wait for P_Active to clear.
+        */
+        while( (*(unsigned int*)(BCHP_IDE_IDEPriBMCmdStat)) & 0x10000)
+        {
+                printk(".");
+        }
+
+        /*
+        ** Re-enable interrupt blocking (block interrupts until
+        ** internal buffers are empty).
+        */
+        *(unsigned int*)(BCHP_IDE_IDEIntMsk) &= ~0x100;
+
+#else
+
+       // turn off interrupt blocking
+       *(unsigned int *)(0xBAFB0080) |= 0x100;
+
+       // poll for status
+       *(unsigned int *)(0xBAFB0300) &= ~0x1;
+       while ((*(unsigned int *)(0xBAFB0300)) & 0x10000)
+       {
+               printk(".");
+       }
+       // turn on interrupt blocking
+       *(unsigned int *)(0xBAFB0080) &= ~0x100;
+
+#endif /* CONFIG_MIPS_BCM7440 */
+
 	return 1;
 }
 
@@ -862,7 +917,7 @@ static int ide_iomio_dma(ide_hwif_t *hwif, unsigned long base, unsigned int port
 	printk(KERN_INFO "    %s: BM-DMA at 0x%04lx-0x%04lx",
 		hwif->name, base, base + ports - 1);
 	if (!request_region(base, ports, hwif->name)) {
-		printk(" -- Error, ports in use.\n");
+		printk(" -- Error, ports in use., name=%s, base=%08x, ports=%08x\n", hwif->name, base, ports);
 		return 1;
 	}
 	hwif->dma_base = base;

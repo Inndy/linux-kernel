@@ -232,7 +232,7 @@ static void ata_exec_command_pio(struct ata_port *ap, struct ata_taskfile *tf)
 {
 	DPRINTK("ata%u: cmd 0x%X\n", ap->id, tf->command);
 
-       	outb(tf->command, ap->ioaddr.command_addr);
+	outb(tf->command, ap->ioaddr.command_addr);
 	ata_pause(ap);
 }
 
@@ -253,7 +253,7 @@ static void ata_exec_command_mmio(struct ata_port *ap, struct ata_taskfile *tf)
 {
 	DPRINTK("ata%u: cmd 0x%X\n", ap->id, tf->command);
 
-       	writeb(tf->command, (void __iomem *) ap->ioaddr.command_addr);
+	writeb(tf->command, (void __iomem *) ap->ioaddr.command_addr);
 	ata_pause(ap);
 }
 
@@ -912,7 +912,7 @@ static u8 ata_dev_try_classify(struct ata_port *ap, unsigned int device)
 
 	dev->class = ATA_DEV_NONE;
 
-	/* see if device passed diags */
+    /* see if device passed diags */
 	if (err == 1)
 		/* do nothing */ ;
 	else if ((device == 0) && (err == 0x81))
@@ -1821,7 +1821,7 @@ void ata_bus_reset(struct ata_port *ap)
 		rc = ata_bus_edd(ap);
 	}
 
-	if (rc)
+    if (rc)
 		goto err_out;
 
 	/*
@@ -2412,6 +2412,20 @@ static unsigned long ata_pio_poll(struct ata_port *ap)
 		ap->pio_task_state = poll_state;
 		return ATA_SHORT_PAUSE;
 	}
+#if defined (CONFIG_MIPS_BCM7440)
+	else if (status & ATA_ERR) {
+		struct ata_queued_cmd *qc;
+		qc = ata_qc_from_tag(ap, ap->active_tag);
+		printk("%s: ERROR DETECTED", __FUNCTION__);
+		if (qc)
+			printk(", Cmd 0x%x\n\n", qc->cdb[0]);
+		else
+			printk("\n");
+
+		ap->pio_task_state = PIO_ST_ERR;
+		return 0;
+	}
+#endif
 
 	ap->pio_task_state = reg_state;
 	return 0;
@@ -2713,7 +2727,7 @@ static void ata_pio_error(struct ata_port *ap)
 
 	drv_stat = ata_chk_status(ap);
 	printk(KERN_WARNING "ata%u: PIO error, drv_stat 0x%x\n",
-	       ap->id, drv_stat);
+		ap->id, drv_stat);
 
 	ap->pio_task_state = PIO_ST_IDLE;
 
@@ -2827,6 +2841,9 @@ static void ata_qc_timeout(struct ata_queued_cmd *qc)
 	struct ata_port *ap = qc->ap;
 	struct ata_device *dev = qc->dev;
 	u8 host_stat = 0, drv_stat;
+#if defined (CONFIG_MIPS_BCM7440)
+	u8 err_stat;
+#endif
 
 	DPRINTK("ENTER\n");
 
@@ -2870,15 +2887,83 @@ static void ata_qc_timeout(struct ata_queued_cmd *qc)
 	default:
 		ata_altstatus(ap);
 		drv_stat = ata_chk_status(ap);
-
+#if defined (CONFIG_MIPS_BCM7440)
+		err_stat = ata_chk_err(ap);
+#endif
 		/* ack bmdma irq events */
 		ap->ops->irq_clear(ap);
 
-		printk(KERN_ERR "ata%u: command 0x%x timeout, stat 0x%x host_stat 0x%x\n",
-		       ap->id, qc->tf.command, drv_stat, host_stat);
+#if defined (CONFIG_MIPS_BCM7440)
+
+		int processed_illcmd = 0;
+
+		printk("%s: ata%u: Cmd 0x%x TIMEOUT, drv_stat 0x%x, host_stat 0x%x, dev class %d, qc->scsicmd 0x%p\n",
+			__FUNCTION__, ap->id, qc->cdb[0], drv_stat, host_stat, qc->dev->class, qc->scsicmd);
+
+		/*
+		** Scenario:
+		**
+		** ATAPI Packet device, terminates ATAP_PROT_ATAPI_DMA command
+		** after PIO SCSI CDB transfer phase with Illegal Command. The
+		** DMA operation is started, but no interrupt ever occurs. Hence
+		** the timeout.
+		**
+		** Check Sense Key (ATA Error Reg) for Illegal Request. If our CDB
+		** got one, cobble together the sense info for the SCSI layer. It's
+		** not successful to issue a call to atapi_request_sense() from here
+		** (subsequent ata_qc_new_init() call within atapi_request_sense()
+		** fails to return a qc for the routine to use).
+		*/
+		if ((drv_stat & ATA_ERR) &&
+			(qc->dev->class == ATA_DEV_ATAPI) && 
+			 qc->scsicmd && 
+			 (((err_stat & 0xf0) >> 4) == ILLEGAL_REQUEST)) {
+
+			struct scsi_cmnd *cmd = qc->scsicmd;
+
+			printk("%s: ata%u: Cmd 0x%x TIMEOUT, ILLEGAL COMMAND, CONSTRUCT SENSE INFO.\n",
+				   __FUNCTION__, ap->id, qc->cdb[0]);
+
+			memset(cmd->sense_buffer, 0, sizeof(cmd->sense_buffer));
+			cmd->sense_buffer[0] = 0x70;
+			cmd->sense_buffer[2] = ILLEGAL_REQUEST;
+			cmd->sense_buffer[7] = 10;      /* Additional length */
+			cmd->sense_buffer[12] = 0x24;   /* ASC */
+
+			/* Enable READ_10 fallback if appropriate */
+			if (cmd->device->r10_fallback_ok && (qc->cdb[0] == READ_12)) {
+				cmd->device->use_12_for_rw = 0;
+				cmd->device->use_10_for_rw = 1;
+			}
+
+			processed_illcmd = 1;
+		}
+#endif
 
 		/* complete taskfile transaction */
 		ata_qc_complete(qc, drv_stat);
+
+#if defined (CONFIG_MIPS_BCM7440)
+		/*
+		** Timeout post-processing
+		** - If we processed an illegal command, call 
+		**   __ata_qc_complete to release resources.
+		** - If device is Busy, perform a Reset.
+		*/
+		if (processed_illcmd)
+			__ata_qc_complete(qc);
+
+		if (drv_stat & ATA_BUSY) {
+			/* Reset */
+			printk("%s: ata%u: Cmd 0x%x TIMEOUT, DRIVE BUSY, ISSUE RESET\n",
+				   __FUNCTION__, ap->id, qc->cdb[0]);
+			if (ap->flags & ATA_FLAG_SATA_RESET) {
+				printk("%s: PERFORM SATA RESET\n", __FUNCTION__);
+				sata_phy_reset(ap);
+			}
+			ata_bus_reset(ap);
+		}
+#endif
 		break;
 	}
 out:
@@ -2993,7 +3078,7 @@ static void __ata_qc_complete(struct ata_queued_cmd *qc)
 	struct ata_port *ap = qc->ap;
 	unsigned int tag, do_clear = 0;
 
-	qc->flags = 0;
+    qc->flags = 0;
 	tag = qc->tag;
 	if (likely(ata_tag_valid(tag))) {
 		if (tag == ap->active_tag)
@@ -3263,6 +3348,10 @@ static void ata_bmdma_start_mmio (struct ata_queued_cmd *qc)
 	 * without first all the MMIO ATA cards/mobos.
 	 * Or maybe I'm just being paranoid.
 	 */
+#if defined (CONFIG_MIPS_BCM7440)
+	/* Read back/flush the byte written */
+	dmactl = readb(mmio + ATA_DMA_CMD);
+#endif
 }
 
 /**
@@ -3308,8 +3397,11 @@ static void ata_bmdma_start_pio (struct ata_queued_cmd *qc)
 
 	/* start host DMA transaction */
 	dmactl = inb(ap->ioaddr.bmdma_addr + ATA_DMA_CMD);
-	outb(dmactl | ATA_DMA_START,
-	     ap->ioaddr.bmdma_addr + ATA_DMA_CMD);
+	outb(dmactl | ATA_DMA_START, ap->ioaddr.bmdma_addr + ATA_DMA_CMD);
+#if defined (CONFIG_MIPS_BCM7440)
+	/* Read back/flush the byte written */
+	dmactl = inb(ap->ioaddr.bmdma_addr + ATA_DMA_CMD);
+#endif
 }
 
 
@@ -3455,19 +3547,43 @@ inline unsigned int ata_host_intr (struct ata_port *ap,
 {
 	u8 status, host_stat;
 
-	switch (qc->tf.protocol) {
+#if defined (CONFIG_MIPS_BCM7440)
+	int illegal_rq = 0;
+	u8 err = ata_chk_err(ap);
+
+	if (((err & 0xf0) >> 4) == ILLEGAL_REQUEST) {
+		int i;
+		printk("\n%s: ERROR: Protocol %d - Drive reports ILLEGAL COMMAND, CDB: 0x", __FUNCTION__, qc->tf.protocol);
+		for (i=0;i<12;i++) printk ("%02x ", qc->cdb[i]);
+		printk("\n\n");
+
+		/* Enable READ_10 fallback if appropriate */
+		if (qc->scsicmd->device->r10_fallback_ok && (qc->cdb[0] == READ_12)) {
+			qc->scsicmd->device->use_12_for_rw = 0;
+			qc->scsicmd->device->use_10_for_rw = 1;
+		}
+
+		illegal_rq = 1;
+	}
+#endif
+
+    switch (qc->tf.protocol) {
 
 	case ATA_PROT_DMA:
 	case ATA_PROT_ATAPI_DMA:
 	case ATA_PROT_ATAPI:
 		/* check status of DMA engine */
 		host_stat = ap->ops->bmdma_status(ap);
-		VPRINTK("ata%u: host_stat 0x%X\n", ap->id, host_stat);
+		VPRINTK("ata%u: Cmd 0x%x, host_stat 0x%X\n", qc->cdb[0], ap->id, host_stat);
 
 		/* if it's not our irq... */
+#if defined (CONFIG_MIPS_BCM7440)
+		if (!illegal_rq && !(host_stat & ATA_DMA_INTR))
+			goto idle_irq;
+#else
 		if (!(host_stat & ATA_DMA_INTR))
 			goto idle_irq;
-
+#endif
 		/* before we do anything else, clear DMA-Start bit */
 		ap->ops->bmdma_stop(ap);
 
@@ -3484,8 +3600,8 @@ inline unsigned int ata_host_intr (struct ata_port *ap,
 		status = ata_chk_status(ap);
 		if (unlikely(status & ATA_BUSY))
 			goto idle_irq;
-		DPRINTK("ata%u: protocol %d (dev_stat 0x%X)\n",
-			ap->id, qc->tf.protocol, status);
+		DPRINTK("ata%u: Cmd 0x%x, protocol %d (dev_stat 0x%X)\n",
+			ap->id, qc->cdb[0], qc->tf.protocol, status);
 
 		/* ack bmdma irq events */
 		ap->ops->irq_clear(ap);
@@ -3505,9 +3621,8 @@ idle_irq:
 
 #ifdef ATA_IRQ_TRAP
 	if ((ap->stats.idle_irq % 1000) == 0) {
-		handled = 1;
 		ata_irq_ack(ap, 0); /* debug trap */
-		printk(KERN_WARNING "ata%d: irq trap\n", ap->id);
+		printk(KERN_WARNING "%s: ata%d: irq trap, count %d\n", __FUNCTION__, ap->id, ap->stats.idle_irq);
 	}
 #endif
 	return 0;	/* irq not handled */
@@ -3590,18 +3705,62 @@ static void atapi_packet_task(void *_data)
 
 	/* make sure DRQ is set */
 	status = ata_chk_status(ap);
-	if ((status & (ATA_BUSY | ATA_DRQ)) != ATA_DRQ)
+	if ((status & (ATA_BUSY | ATA_DRQ)) != ATA_DRQ) {
+		printk(KERN_ERR "%s: DRQ NOT ASSERTED FOR CDB TRANSMIT (STATUS 0x%x)!\n", __FUNCTION__, status);
 		goto err_out;
+	}
 
 	/* send SCSI cdb */
-	DPRINTK("send cdb\n");
+	DPRINTK("send cdb cmd 0x%x\n", qc->cdb[0]);
 	assert(ap->cdb_len >= 12);
 	ata_data_xfer(ap, qc->cdb, ap->cdb_len, 1);
 
+#if defined (CONFIG_MIPS_BCM7440)
+	int delay_cnt = 100;
+	while (((status = ata_altstatus(ap))& ATA_DRQ) && --delay_cnt) udelay(1);
+	if (delay_cnt <= 0)
+		printk(KERN_ERR "%s: EXHAUSTED WAIT FOR CDB TRANSMIT (STATUS 0x%x)!\n", __FUNCTION__, status);
+	/* Delay to guarantee CDB transmission */
+	udelay(10);
+
+	/*
+	** If we are DMA'ing, irq handler takes over after bmdma_start
+	** On first READ_12, wait a long time to see if the device will
+	** report ILLEGAL_REQUEST so that we don't have to wait for a
+	** DMA timeout (for uninterrupted playback).
+	*/
+	if (qc->tf.protocol == ATA_PROT_ATAPI_DMA) {
+		if (qc->cdb[0] == READ_12) qc->scsicmd->device->r12_cnt++;
+		if (qc->scsicmd->device->r12_cnt == 1 && qc->cdb[0] == READ_12) {
+			udelay(1000);
+			if (qc->flags & ATA_QCFLAG_ACTIVE) {
+				if (ata_altstatus(ap) & ATA_ERR) {
+					if (((ata_chk_err(ap) & 0xf0) >> 4) == ILLEGAL_REQUEST) {
+						/* Enable READ_10 fallback if appropriate */
+						if (qc->scsicmd->device->r10_fallback_ok) {
+							printk("%s: READ_12 ILLEGAL COMMAND - ERROR AND FALL BACK TO READ_10.\n", __FUNCTION__);
+							qc->scsicmd->device->use_12_for_rw = 0;
+							qc->scsicmd->device->use_10_for_rw = 1;
+						}
+						/* Complete the IO and be sure resources are released */
+						ata_qc_complete(qc, ATA_ERR);
+						__ata_qc_complete(qc);
+						return;
+					}
+				}
+			}
+			else {
+				/* The request has already been terminated from ata_host_intr */
+				return;
+			}
+		}
+		ap->ops->bmdma_start(qc);	    /* initiate bmdma */
+	}
+#else
 	/* if we are DMA'ing, irq handler takes over from here */
 	if (qc->tf.protocol == ATA_PROT_ATAPI_DMA)
 		ap->ops->bmdma_start(qc);	    /* initiate bmdma */
-
+#endif
 	/* non-data commands are also handled via irq */
 	else if (qc->tf.protocol == ATA_PROT_ATAPI_NODATA) {
 		/* do nothing */

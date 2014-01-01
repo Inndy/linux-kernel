@@ -595,6 +595,12 @@ repeat:
 	page = find_lock_page(mapping, index);
 	if (!page) {
 		if (!cached_page) {
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined (CONFIG_MIPS_BCM7440 )
+                        if (set_gfp_dma_flag(mapping)) {
+					gfp_mask &= mapping->flags;
+                                gfp_mask |= GFP_DMA;
+                        }
+#endif
 			cached_page = alloc_page(gfp_mask);
 			if (!cached_page)
 				return NULL;
@@ -681,6 +687,10 @@ grab_cache_page_nowait(struct address_space *mapping, unsigned long index)
 	struct page *page = find_get_page(mapping, index);
 	unsigned int gfp_mask;
 
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	set_gfp_dma_flag(mapping);
+#endif
+
 	if (page) {
 		if (!TestSetPageLocked(page))
 			return page;
@@ -727,6 +737,10 @@ void do_generic_mapping_read(struct address_space *mapping,
 	struct page *cached_page;
 	int error;
 	struct file_ra_state ra = *_ra;
+
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	set_gfp_dma_flag(mapping);
+#endif
 
 	cached_page = NULL;
 	index = *ppos >> PAGE_CACHE_SHIFT;
@@ -1149,6 +1163,10 @@ static int fastcall page_cache_read(struct file * file, unsigned long offset)
 	struct address_space *mapping = file->f_mapping;
 	struct page *page; 
 	int error;
+
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+        set_gfp_dma_flag(mapping);
+#endif
 
 	page = page_cache_alloc_cold(mapping);
 	if (!page)
@@ -1576,6 +1594,11 @@ static inline struct page *__read_cache_page(struct address_space *mapping,
 {
 	struct page *page, *cached_page = NULL;
 	int err;
+
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+        set_gfp_dma_flag(mapping);
+#endif
+
 repeat:
 	page = find_get_page(mapping, index);
 	if (!page) {
@@ -1658,6 +1681,11 @@ __grab_cache_page(struct address_space *mapping, unsigned long index,
 {
 	int err;
 	struct page *page;
+
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+        set_gfp_dma_flag(mapping);
+#endif
+
 repeat:
 	page = find_lock_page(mapping, index);
 	if (!page) {

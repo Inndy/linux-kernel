@@ -96,6 +96,11 @@ unsigned int scsi_logging_level;
 EXPORT_SYMBOL(scsi_logging_level);
 #endif
 
+#if defined (CONFIG_MIPS_BCM7440)
+unsigned int r10_fallback_ok = 0;
+EXPORT_SYMBOL(r10_fallback_ok);
+#endif
+
 const char *const scsi_device_types[MAX_SCSI_DEVICE_CODE] = {
 	"Direct-Access    ",
 	"Sequential-Access",
@@ -809,9 +814,37 @@ static void scsi_softirq(struct softirq_action *h)
 		scsi_log_completion(cmd, disposition);
 		switch (disposition) {
 		case SUCCESS:
+#if defined (CONFIG_MIPS_BCM7440)
+			/*
+			 * Clear device-specific flags that may require
+			 * resetting across media changes.
+			 */
+			if (cmd->cmnd[0] == START_STOP && cmd->device->removable) {
+				cmd->device->use_12_for_rw = 1;
+				cmd->device->use_10_for_rw = 0;
+				cmd->device->r12_cnt = 0;
+				if (r10_fallback_ok && !cmd->device->r10_fallback_ok) {
+					printk("%s: SETTING R10_FALLBACK_OK\n", __FUNCTION__);
+					cmd->device->r10_fallback_ok = 1;
+				}
+			}
+#endif
 			scsi_finish_command(cmd);
 			break;
 		case NEEDS_RETRY:
+#if defined (CONFIG_MIPS_BCM7440)
+			if ((cmd->cmnd[0] == READ_12) && !cmd->device->use_12_for_rw) {
+				/*
+				** Convert Read_12 into Read_10
+				*/
+				printk("%s: Convert READ_12 to READ_10 for COMMAND RETRY\n", __FUNCTION__);
+				cmd->cmnd[0] = READ_10;
+				cmd->cmnd[6] = 0;
+				cmd->cmnd[7] = cmd->cmnd[8];
+				cmd->cmnd[8] = cmd->cmnd[9];
+				cmd->cmnd[9] = cmd->cmnd[10] = 0;
+			}
+#endif
 			scsi_retry_command(cmd);
 			break;
 		case ADD_TO_MLQUEUE:
@@ -1308,6 +1341,11 @@ MODULE_LICENSE("GPL");
 
 module_param(scsi_logging_level, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(scsi_logging_level, "a bit mask of logging levels");
+
+#if defined (CONFIG_MIPS_BCM7440)
+module_param_named(r10_ok, r10_fallback_ok, int, 0);
+MODULE_PARM_DESC(r10_ok, "OK to fall back to READ_10 commands if device returns ILLEGAL_REQUEST to READ_12 (0=no, 1=yes)");
+#endif
 
 static int __init init_scsi(void)
 {

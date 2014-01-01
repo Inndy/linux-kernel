@@ -1620,6 +1620,10 @@ int journal_blocks_per_page(struct inode *inode)
  */
 void * __jbd_kmalloc (const char *where, size_t size, int flags, int retry)
 {
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	flags |= GFP_DMA;
+#endif
+
 	return kmalloc(size, flags | (retry ? __GFP_NOFAIL : 0));
 }
 

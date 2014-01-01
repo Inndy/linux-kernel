@@ -286,6 +286,12 @@ config PRINTK
 	  very difficult to diagnose system problems, saying N here is
 	  strongly discouraged.
 
+config BRCM_UART_PRINT
+	default y
+	bool "Enable support broadcom uart print" if EMBEDDED
+	help
+	  This option enables Broadcom debug support.
+
 config BUG
 	bool "BUG() support" if EMBEDDED
 	default y

@@ -13,6 +13,7 @@
 
 #include <asm/io.h>
 #include <asm/scatterlist.h>
+#include <linux/device.h>
 
 struct dma_pool *dma_pool_create(const char *name, struct device *dev, 
 			size_t size, size_t align, size_t allocation);

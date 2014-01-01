@@ -539,7 +539,7 @@ static inline void allow_status (struct net2280_ep *ep)
 /* count (<= 4) bytes in the next fifo write will be valid */
 static inline void set_fifo_bytecount (struct net2280_ep *ep, unsigned count)
 {
-	writeb (count, 2 + (u8 __iomem *) &ep->regs->ep_cfg);
+	writeb (count, 1 + (u8 __iomem *) &ep->regs->ep_cfg); //hee.plat2 In case of Big-endian, 2 ia appropriate for Little-endian
 }
 
 struct net2280_request {

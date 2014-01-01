@@ -16,6 +16,7 @@
  */
 #include <linux/config.h>
 #include <linux/init.h>
+#include <linux/console.h>
 #include <linux/ide.h>
 #include <linux/ioport.h>
 
@@ -36,13 +37,13 @@ static struct mtd_partition cmbvr4133_mtd_parts[] = {
 		.size =		0x1be0000,
 		.offset =	0,
 		.mask_flags = 	0,
-	},
+	}, 
 	{
 		.name =		"PMON",
 		.size =		0x140000,
 		.offset =	MTDPART_OFS_APPEND,
 		.mask_flags =	MTD_WRITEABLE,  /* force read-only */
-	},
+	}, 
 	{
 		.name =		"User FS2",
 		.size =		MTDPART_SIZ_FULL,
@@ -56,7 +57,7 @@ static struct mtd_partition cmbvr4133_mtd_parts[] = {
 
 extern void i8259_init(void);
 
-static int __init nec_cmbvr4133_setup(void)
+static void __init nec_cmbvr4133_setup(void)
 {
 #ifdef CONFIG_ROCKHOPPER
 	extern void disable_pcnet(void);
@@ -90,7 +91,4 @@ static int __init nec_cmbvr4133_setup(void)
 #ifdef CONFIG_ROCKHOPPER
 	i8259_init();
 #endif
-	return 0;
 }
-
-early_initcall(nec_cmbvr4133_setup);

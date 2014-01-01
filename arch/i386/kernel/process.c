@@ -301,7 +301,27 @@ __asm__(".section .text\n"
 	"call *%ebx\n\t"
 	"pushl %eax\n\t"
 	"call do_exit\n"
+	"kernel_thread_helper_end:\n\t"
 	".previous");
+#ifdef CONFIG_KGDB
+#include <linux/dwarf2-lang.h>
+
+	/* This dwarf code tells gdb that this is the end of the unwind */
+	/* This uses the CFA set up for pc=1 located in entry.S */
+#define _ESP 4
+#define _PC  8
+#define _EIP 8
+__asm__(
+	QUOTE_THIS(
+		CFI_preamble(dwarf_4,_PC,1,1)
+		CFA_define_reference(_ESP,0)	/* Stack pointer */
+		CFA_undefine_reg(_EIP)
+		CFI_postamble()
+
+		FDE_preamble(dwarf_4,kernel_thread_helper,kernel_thread_helper_end)
+		FDE_postamble()
+		));
+#endif
 
 /*
  * Create a kernel thread

@@ -41,6 +41,7 @@
 #include <asm/unistd.h>
 #include <asm/thread_info.h>
 #include <asm/hw_irq.h>
+#include <asm/kgdb.h>
 
 	.code64
 
@@ -741,6 +742,7 @@ ENTRY(kernel_thread)
 	UNFAKE_STACK_FRAME
 	ret
 	CFI_ENDPROC
+	CFI_END_FRAME(kernel_thread)
 
 	
 child_rip:

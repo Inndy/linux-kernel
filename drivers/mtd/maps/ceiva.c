@@ -11,7 +11,7 @@
  *
  * (C) 2000 Nicolas Pitre <nico@cam.org>
  *
- * $Id: ceiva.c,v 1.11 2004/09/16 23:27:12 gleixner Exp $
+ * $Id: ceiva.c,v 1.13 2005/11/29 20:01:28 gleixner Exp $
  */
 
 #include <linux/config.h>
@@ -20,6 +20,7 @@
 #include <linux/ioport.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
+#include <linux/slab.h>
 
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/map.h>
@@ -312,8 +313,7 @@ static void __init clps_locate_partitions(struct mtd_info *mtd)
 
 static void __exit clps_destroy_partitions(void)
 {
-	if (parsed_parts)
-		kfree(parsed_parts);
+	kfree(parsed_parts);
 }
 
 static struct mtd_info *mymtd;

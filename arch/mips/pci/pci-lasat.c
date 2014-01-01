@@ -7,12 +7,8 @@
  */
 #include <linux/kernel.h>
 #include <linux/init.h>
-#include <linux/interrupt.h>
 #include <linux/pci.h>
 #include <linux/types.h>
-#include <linux/interrupt.h>
-#include <linux/pci.h>
-#include <linux/delay.h>
 #include <asm/bootinfo.h>
 
 extern struct pci_ops nile4_pci_ops;
@@ -20,14 +16,14 @@ extern struct pci_ops gt64120_pci_ops;
 static struct resource lasat_pci_mem_resource = {
 	.name	= "LASAT PCI MEM",
 	.start	= 0x18000000,
-	.end	= 0x19FFFFFF,
+	.end	= 0x19ffffff,
 	.flags	= IORESOURCE_MEM,
 };
 
 static struct resource lasat_pci_io_resource = {
 	.name	= "LASAT PCI IO",
 	.start	= 0x1a000000,
-	.end	= 0x1bFFFFFF,
+	.end	= 0x1bffffff,
 	.flags	= IORESOURCE_IO,
 };
 
@@ -52,9 +48,11 @@ static int __init lasat_pci_setup(void)
         }
 
 	register_pci_controller(&lasat_pci_controller);
-        return 0;
+
+	return 0;
 }
-early_initcall(lasat_pci_setup);
+
+arch_initcall(lasat_pci_setup);
 
 #define LASATINT_ETH1   0
 #define LASATINT_ETH0   1
@@ -70,11 +68,9 @@ int __init pcibios_map_irq(struct pci_dev *dev, u8 slot, u8 pin)
 {
     switch (slot) {
         case 1:
-            return LASATINT_PCIA;   /* Expansion Module 0 */
         case 2:
-            return LASATINT_PCIB;   /* Expansion Module 1 */
         case 3:
-            return LASATINT_PCIC;   /* Expansion Module 2 */
+		return LASATINT_PCIA + (((slot-1) + (pin-1)) % 4);
         case 4:
             return LASATINT_ETH1;   /* Ethernet 1 (LAN 2) */
         case 5:

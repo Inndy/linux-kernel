@@ -46,6 +46,10 @@
 #undef REALLY_SLOW_IO		/* most systems can safely undef this */
 
 //#define DEBUG
+//#ifdef pr_debug
+//#undef pr_debug
+//#endif
+//#define pr_debug printk
 
 #include <linux/config.h>
 #include <linux/module.h>
@@ -70,6 +74,10 @@
 #include <asm/uaccess.h>
 #include <asm/io.h>
 #include <asm/div64.h>
+
+#ifdef CONFIG_BLK_DEV_BRCM_PORT_MULT
+#include "bcmpm.h"
+#endif
 
 struct ide_disk_obj {
 	ide_drive_t	*drive;
@@ -163,6 +171,10 @@ static ide_startstop_t __ide_do_rw_disk(ide_drive_t *drive, struct request *rq, 
 	task_ioreg_t command	= WIN_NOP;
 	ata_nsector_t		nsectors;
 
+#ifdef CONFIG_BLK_DEV_BRCM_PORT_MULT
+	bcmpm_select_drive(drive, 0);
+#endif
+
 	nsectors.all		= (u16) rq->nr_sectors;
 
 	if (hwif->no_lba48_dma && lba48 && dma) {
@@ -186,7 +198,11 @@ static ide_startstop_t __ide_do_rw_disk(ide_drive_t *drive, struct request *rq, 
 		if (lba48) {
 			task_ioreg_t tasklets[10];
 
+#if defined( CONFIG_LBD ) || defined( HAVE_SECTOR_T )
 			pr_debug("%s: LBA=0x%012llx\n", drive->name, block);
+#else
+			pr_debug("%s: LBA=0x%08x\n", drive->name, block);
+#endif
 
 			tasklets[0] = 0;
 			tasklets[1] = 0;
@@ -220,14 +236,23 @@ static ide_startstop_t __ide_do_rw_disk(ide_drive_t *drive, struct request *rq, 
 			hwif->OUTB(tasklets[4], IDE_SECTOR_REG);
 			hwif->OUTB(tasklets[5], IDE_LCYL_REG);
 			hwif->OUTB(tasklets[6], IDE_HCYL_REG);
+#ifdef CONFIG_BLK_DEV_BRCM_PORT_MULT
+			bcmpm_select_drive(drive, 0);
+#else
 			hwif->OUTB(0x00|drive->select.all,IDE_SELECT_REG);
+#endif
 		} else {
 			hwif->OUTB(0x00, IDE_FEATURE_REG);
 			hwif->OUTB(nsectors.b.low, IDE_NSECTOR_REG);
 			hwif->OUTB(block, IDE_SECTOR_REG);
 			hwif->OUTB(block>>=8, IDE_LCYL_REG);
 			hwif->OUTB(block>>=8, IDE_HCYL_REG);
+
+#ifdef CONFIG_BLK_DEV_BRCM_PORT_MULT
+			bcmpm_select_drive(drive, (block>>8)&0x0f|drive->select.all);
+#else
 			hwif->OUTB(((block>>8)&0x0f)|drive->select.all,IDE_SELECT_REG);
+#endif
 		}
 	} else {
 		unsigned int sect,head,cyl,track;
@@ -257,8 +282,25 @@ static ide_startstop_t __ide_do_rw_disk(ide_drive_t *drive, struct request *rq, 
 				if (drive->vdma)
 					command = lba48 ? WIN_READ_EXT: WIN_READ;
 			}
+#ifdef CONFIG_BLK_DEV_SVWKS
+			/* On the 7440, which has both the SVWKS and legacy PATA controller,
+			 * we must make sure that the PATA use the IBM Specs
+			 */
+			if (hwif->pci_dev) {
+				/* BRCM/Serverworks SATA implementation requires this reverse order */
+				hwif->dma_start(drive);
+				hwif->dma_exec_cmd(drive, command);
+			}
+			else {
+				/* IBM Specs */
+				hwif->dma_exec_cmd(drive, command);
+				hwif->dma_start(drive);
+			}
+#else
+			/* IBM Specs */
 			hwif->dma_exec_cmd(drive, command);
 			hwif->dma_start(drive);
+#endif
 			return ide_started;
 		}
 		/* fallback to PIO */
@@ -311,9 +353,15 @@ static ide_startstop_t ide_do_rw_disk (ide_drive_t *drive, struct request *rq, s
 		return ide_stopped;
 	}
 
+if (sizeof(block) == 8) {
 	pr_debug("%s: %sing: block=%llu, sectors=%lu, buffer=0x%08lx\n",
 		 drive->name, rq_data_dir(rq) == READ ? "read" : "writ",
 		 block, rq->nr_sectors, (unsigned long)rq->buffer);
+} else if (sizeof(block) == 4) {
+	pr_debug("%s: %sing: block=%08x, sectors=%lu, buffer=0x%08lx\n",
+		 drive->name, rq_data_dir(rq) == READ ? "read" : "writ",
+		 block, rq->nr_sectors, (unsigned long)rq->buffer);
+}
 
 	if (hwif->rw_disk)
 		hwif->rw_disk(drive, rq);

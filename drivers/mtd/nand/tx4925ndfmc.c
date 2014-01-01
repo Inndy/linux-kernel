@@ -3,7 +3,7 @@
  *
  *  Overview:
  *   This is a device driver for the NAND flash device found on the
- *   Toshiba RBTX4925 reference board, which is a SmartMediaCard. It supports 
+ *   Toshiba RBTX4925 reference board, which is a SmartMediaCard. It supports
  *   16MiB, 32MiB and 64MiB cards.
  *
  * Author: MontaVista Software, Inc.  source@mvista.com
@@ -11,10 +11,10 @@
  * Derived from drivers/mtd/autcpu12.c
  *       Copyright (c) 2001 Thomas Gleixner (gleixner@autronix.de)
  *
- * $Id: tx4925ndfmc.c,v 1.5 2004/10/05 13:50:20 gleixner Exp $
+ * $Id: tx4925ndfmc.c,v 1.6 2005/11/07 11:14:31 gleixner Exp $
  *
- * Copyright (C) 2001 Toshiba Corporation 
- * 
+ * Copyright (C) 2001 Toshiba Corporation
+ *
  * 2003 (c) MontaVista Software, Inc. This file is licensed under
  * the terms of the GNU General Public License version 2. This program
  * is licensed "as is" without any warranty of any kind, whether express
@@ -83,7 +83,7 @@ static struct mtd_partition partition_info128k[] = {
 #define NUM_PARTITIONS64K  2
 #define NUM_PARTITIONS128K 2
 
-/* 
+/*
  *	hardware specific access to control-lines
 */
 static void tx4925ndfmc_hwcontrol(struct mtd_info *mtd, int cmd)
@@ -91,7 +91,7 @@ static void tx4925ndfmc_hwcontrol(struct mtd_info *mtd, int cmd)
 
 	switch(cmd){
 
-		case NAND_CTL_SETCLE: 
+		case NAND_CTL_SETCLE:
 			tx4925_ndfmcptr->mcr |= TX4925_NDFMCR_CLE;
 			break;
 		case NAND_CTL_CLRCLE:
@@ -100,7 +100,7 @@ static void tx4925ndfmc_hwcontrol(struct mtd_info *mtd, int cmd)
 		case NAND_CTL_SETALE:
 			tx4925_ndfmcptr->mcr |= TX4925_NDFMCR_ALE;
 			break;
-		case NAND_CTL_CLRALE: 
+		case NAND_CTL_CLRALE:
 			tx4925_ndfmcptr->mcr &= ~TX4925_NDFMCR_ALE;
 			break;
 		case NAND_CTL_SETNCE:
@@ -158,11 +158,11 @@ void tx4925ndfmc_device_setup(void)
 
         /* reset NDFMC */
         tx4925_ndfmcptr->rstr |= TX4925_NDFRSTR_RST;
-	while (tx4925_ndfmcptr->rstr & TX4925_NDFRSTR_RST);       
+	while (tx4925_ndfmcptr->rstr & TX4925_NDFRSTR_RST);
 
 	/* setup BusSeparete, Hold Time, Strobe Pulse Width */
 	tx4925_ndfmcptr->mcr = TX4925_BSPRT ? TX4925_NDFMCR_BSPRT : 0;
-	tx4925_ndfmcptr->spr = TX4925_HOLD << 4 | TX4925_SPW;             
+	tx4925_ndfmcptr->spr = TX4925_HOLD << 4 | TX4925_SPW;
 }
 static u_char tx4925ndfmc_nand_read_byte(struct mtd_info *mtd)
 {
@@ -249,19 +249,19 @@ static void tx4925ndfmc_nand_command (struct mtd_info *mtd, unsigned command, in
 			this->write_byte(mtd, (unsigned char) (page_addr & 0xff));
 			this->write_byte(mtd, (unsigned char) ((page_addr >> 8) & 0xff));
 			/* One more address cycle for higher density devices */
-			if (mtd->size & 0x0c000000) 
+			if (mtd->size & 0x0c000000)
 				this->write_byte(mtd, (unsigned char) ((page_addr >> 16) & 0x0f));
 		}
 		/* Latch in address */
 		this->hwcontrol(mtd, NAND_CTL_CLRALE);
 	}
-	
-	/* 
-	 * program and erase have their own busy handlers 
+
+	/*
+	 * program and erase have their own busy handlers
 	 * status and sequential in needs no delay
 	*/
 	switch (command) {
-			
+
 	case NAND_CMD_PAGEPROG:
 		/* Turn off WE */
 		this->hwcontrol (mtd, NAND_CTL_CLRWP);
@@ -278,7 +278,7 @@ static void tx4925ndfmc_nand_command (struct mtd_info *mtd, unsigned command, in
 		return;
 
 	case NAND_CMD_RESET:
-		if (this->dev_ready)	
+		if (this->dev_ready)
 			break;
 		this->hwcontrol(mtd, NAND_CTL_SETCLE);
 		this->write_byte(mtd, NAND_CMD_STATUS);
@@ -286,18 +286,18 @@ static void tx4925ndfmc_nand_command (struct mtd_info *mtd, unsigned command, in
 		while ( !(this->read_byte(mtd) & 0x40));
 		return;
 
-	/* This applies to read commands */	
+	/* This applies to read commands */
 	default:
-		/* 
+		/*
 		 * If we don't have access to the busy pin, we apply the given
 		 * command delay
 		*/
 		if (!this->dev_ready) {
 			udelay (this->chip_delay);
 			return;
-		}	
+		}
 	}
-	
+
 	/* wait until command is processed */
 	while (!this->dev_ready(mtd));
 }
@@ -346,10 +346,10 @@ int __init tx4925ndfmc_init (void)
 	this->enable_hwecc = tx4925ndfmc_enable_hwecc;
 	this->calculate_ecc = tx4925ndfmc_readecc;
 	this->correct_data = nand_correct_data;
-	this->eccmode = NAND_ECC_HW6_512;	
+	this->eccmode = NAND_ECC_HW6_512;
 	this->dev_ready = tx4925ndfmc_device_ready;
 	/* 20 us command delay time */
-	this->chip_delay = 20;		
+	this->chip_delay = 20;
         this->read_byte = tx4925ndfmc_nand_read_byte;
         this->write_byte = tx4925ndfmc_nand_write_byte;
 	this->cmdfunc = tx4925ndfmc_nand_command;
@@ -378,10 +378,10 @@ int __init tx4925ndfmc_init (void)
 	switch(tx4925ndfmc_mtd->size){
 		case 0x01000000: add_mtd_partitions(tx4925ndfmc_mtd, partition_info16k, NUM_PARTITIONS16K); break;
 		case 0x02000000: add_mtd_partitions(tx4925ndfmc_mtd, partition_info32k, NUM_PARTITIONS32K); break;
-		case 0x04000000: add_mtd_partitions(tx4925ndfmc_mtd, partition_info64k, NUM_PARTITIONS64K); break; 
-		case 0x08000000: add_mtd_partitions(tx4925ndfmc_mtd, partition_info128k, NUM_PARTITIONS128K); break; 
+		case 0x04000000: add_mtd_partitions(tx4925ndfmc_mtd, partition_info64k, NUM_PARTITIONS64K); break;
+		case 0x08000000: add_mtd_partitions(tx4925ndfmc_mtd, partition_info128k, NUM_PARTITIONS128K); break;
 		default: {
-			printk ("Unsupported SmartMedia device\n"); 
+			printk ("Unsupported SmartMedia device\n");
 			err = -ENXIO;
 			goto out_ior;
 		}

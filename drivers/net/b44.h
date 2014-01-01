@@ -1,6 +1,135 @@
 #ifndef _B44_H
 #define _B44_H
 
+#if !defined(__iomem)
+#define __iomem
+#endif
+
+#ifndef NETDEV_TX_OK
+#define NETDEV_TX_OK 0
+#endif
+
+#ifndef NETDEV_TX_BUSY
+#define NETDEV_TX_BUSY 1
+#endif
+
+#ifndef NETDEV_TX_LOCKED
+#define NETDEV_TX_LOCKED -1
+#endif
+
+#ifndef mmiowb
+#define mmiowb()
+#endif
+
+#ifndef WARN_ON
+#define WARN_ON(x)
+#endif
+
+#ifndef IRQ_RETVAL
+typedef void irqreturn_t;
+#define IRQ_RETVAL(x)
+#endif
+
+#if (LINUX_VERSION_CODE < 0x020604)
+#define MODULE_VERSION(version)
+#endif
+
+#if (LINUX_VERSION_CODE <= 0x020600)
+#define schedule_work(x)	schedule_task(x)
+#define work_struct		tq_struct
+#define INIT_WORK(x, y, z)	INIT_TQUEUE(x, y, z)
+#endif
+
+#if (LINUX_VERSION_CODE < 0x020605)
+#define pci_dma_sync_single_for_cpu(pdev, map, len, dir)	\
+	pci_dma_sync_single(pdev, map, len, dir)
+
+#define pci_dma_sync_single_for_device(pdev, map, len, dir)
+#endif
+
+#if (LINUX_VERSION_CODE < 0x020600)
+#define pci_get_device(x, y, z)	pci_find_device(x, y, z)
+#define pci_get_slot(x, y)	pci_find_slot((x)->number, y)
+#define pci_dev_put(x)
+#endif
+
+#if (LINUX_VERSION_CODE < 0x020547)
+#define pci_set_consistent_dma_mask(pdev, mask) (0)
+#endif
+
+#ifndef PCI_CAP_ID_EXP
+#define PCI_CAP_ID_EXP 0x10
+#endif
+
+#if !defined(HAVE_NETDEV_PRIV) && (LINUX_VERSION_CODE != 0x020603) && (LINUX_VERSION_CODE != 0x020604) && (LINUX_VERSION_CODE != 0x20605)
+static inline void *netdev_priv(struct net_device *dev)
+{
+	return dev->priv;
+}
+#endif
+
+#ifdef OLD_NETIF
+static inline void netif_poll_disable(struct net_device *dev)
+{
+	while (test_and_set_bit(__LINK_STATE_RX_SCHED, &dev->state)) {
+		/* No hurry. */
+		current->state = TASK_INTERRUPTIBLE;
+		schedule_timeout(1);
+	}
+}
+
+static inline void netif_poll_enable(struct net_device *dev)
+{
+	clear_bit(__LINK_STATE_RX_SCHED, &dev->state);
+}
+
+static inline void netif_tx_disable(struct net_device *dev)
+{
+	spin_lock_bh(&dev->xmit_lock);
+	netif_stop_queue(dev);
+	spin_unlock_bh(&dev->xmit_lock);
+}
+
+#endif
+
+#if (LINUX_VERSION_CODE < 0x20607)
+#if	0   //TMM HR20  re-define in 2.4.29
+static inline struct mii_ioctl_data *if_mii(struct ifreq *rq)
+{
+	return (struct mii_ioctl_data *) &rq->ifr_ifru;
+}
+#endif
+#endif
+
+#if (LINUX_VERSION_CODE < 0x2060c)
+static inline int skb_header_cloned(struct sk_buff *skb) { return 0; }
+#endif
+
+#ifndef NETIF_F_LLTX
+#define NETIF_F_LLTX	0
+#endif
+
+#ifndef ADVERTISE_PAUSE
+#define ADVERTISE_PAUSE_CAP		0x0400
+#endif
+#ifndef ADVERTISE_PAUSE_ASYM
+#define ADVERTISE_PAUSE_ASYM		0x0800
+#endif
+#ifndef LPA_PAUSE
+#define LPA_PAUSE_CAP			0x0400
+#endif
+#ifndef LPA_PAUSE_ASYM
+#define LPA_PAUSE_ASYM			0x0800
+#endif
+
+#ifndef ADVERTISED_Pause
+#define ADVERTISED_Pause		(1 << 13)
+#endif
+#ifndef ADVERTISED_Asym_Pause
+#define ADVERTISED_Asym_Pause		(1 << 14)
+#endif
+
+
 /* Register layout. (These correspond to struct _bcmenettregs in bcm4400.) */
 #define	B44_DEVCTRL	0x0000UL /* Device Control */
 #define  DEVCTRL_MPM		0x00000040 /* Magic Packet PME Enable (B0 only) */
@@ -346,29 +475,63 @@ struct ring_info {
 
 #define B44_MCAST_TABLE_SIZE	32
 
+#define	B44_STAT_REG_DECLARE		\
+	_B44(tx_good_octets)		\
+	_B44(tx_good_pkts)		\
+	_B44(tx_octets)			\
+	_B44(tx_pkts)			\
+	_B44(tx_broadcast_pkts)		\
+	_B44(tx_multicast_pkts)		\
+	_B44(tx_len_64)			\
+	_B44(tx_len_65_to_127)		\
+	_B44(tx_len_128_to_255)		\
+	_B44(tx_len_256_to_511)		\
+	_B44(tx_len_512_to_1023)	\
+	_B44(tx_len_1024_to_max)	\
+	_B44(tx_jabber_pkts)		\
+	_B44(tx_oversize_pkts)		\
+	_B44(tx_fragment_pkts)		\
+	_B44(tx_underruns)		\
+	_B44(tx_total_cols)		\
+	_B44(tx_single_cols)		\
+	_B44(tx_multiple_cols)		\
+	_B44(tx_excessive_cols)		\
+	_B44(tx_late_cols)		\
+	_B44(tx_defered)		\
+	_B44(tx_carrier_lost)		\
+	_B44(tx_pause_pkts)		\
+	_B44(rx_good_octets)		\
+	_B44(rx_good_pkts)		\
+	_B44(rx_octets)			\
+	_B44(rx_pkts)			\
+	_B44(rx_broadcast_pkts)		\
+	_B44(rx_multicast_pkts)		\
+	_B44(rx_len_64)			\
+	_B44(rx_len_65_to_127)		\
+	_B44(rx_len_128_to_255)		\
+	_B44(rx_len_256_to_511)		\
+	_B44(rx_len_512_to_1023)	\
+	_B44(rx_len_1024_to_max)	\
+	_B44(rx_jabber_pkts)		\
+	_B44(rx_oversize_pkts)		\
+	_B44(rx_fragment_pkts)		\
+	_B44(rx_missed_pkts)		\
+	_B44(rx_crc_align_errs)		\
+	_B44(rx_undersize)		\
+	_B44(rx_crc_errs)		\
+	_B44(rx_align_errs)		\
+	_B44(rx_symbol_errs)		\
+	_B44(rx_pause_pkts)		\
+	_B44(rx_nonpause_pkts)
+
 /* SW copy of device statistics, kept up to date by periodic timer
- * which probes HW values.  Must have same relative layout as HW
- * register above, because b44_stats_update depends upon this.
+ * which probes HW values. Check b44_stats_update if you mess with
+ * the layout
  */
 struct b44_hw_stats {
-	u32 tx_good_octets, tx_good_pkts, tx_octets;
-	u32 tx_pkts, tx_broadcast_pkts, tx_multicast_pkts;
-	u32 tx_len_64, tx_len_65_to_127, tx_len_128_to_255;
-	u32 tx_len_256_to_511, tx_len_512_to_1023, tx_len_1024_to_max;
-	u32 tx_jabber_pkts, tx_oversize_pkts, tx_fragment_pkts;
-	u32 tx_underruns, tx_total_cols, tx_single_cols;
-	u32 tx_multiple_cols, tx_excessive_cols, tx_late_cols;
-	u32 tx_defered, tx_carrier_lost, tx_pause_pkts;
-	u32 __pad1[8];
-
-	u32 rx_good_octets, rx_good_pkts, rx_octets;
-	u32 rx_pkts, rx_broadcast_pkts, rx_multicast_pkts;
-	u32 rx_len_64, rx_len_65_to_127, rx_len_128_to_255;
-	u32 rx_len_256_to_511, rx_len_512_to_1023, rx_len_1024_to_max;
-	u32 rx_jabber_pkts, rx_oversize_pkts, rx_fragment_pkts;
-	u32 rx_missed_pkts, rx_crc_align_errs, rx_undersize;
-	u32 rx_crc_errs, rx_align_errs, rx_symbol_errs;
-	u32 rx_pause_pkts, rx_nonpause_pkts;
+#define _B44(x)	u32 x;
+B44_STAT_REG_DECLARE
+#undef _B44
 };
 
 struct b44 {
@@ -386,7 +549,6 @@ struct b44 {
 
 	u32			dma_offset;
 	u32			flags;
-#define B44_FLAG_INIT_COMPLETE	0x00000001
 #define B44_FLAG_BUGGY_TXPTR	0x00000002
 #define B44_FLAG_REORDER_BUG	0x00000004
 #define B44_FLAG_PAUSE_AUTO	0x00008000
@@ -400,6 +562,8 @@ struct b44 {
 #define B44_FLAG_ADV_100HALF	0x04000000
 #define B44_FLAG_ADV_100FULL	0x08000000
 #define B44_FLAG_INTERNAL_PHY	0x10000000
+#define B44_FLAG_RX_RING_HACK	0x20000000
+#define B44_FLAG_TX_RING_HACK	0x40000000
 
 	u32			rx_offset;
 
@@ -418,6 +582,9 @@ struct b44 {
 
 	u32			rx_pending;
 	u32			tx_pending;
+#if (LINUX_VERSION_CODE < 0x2060a)
+	u32			pci_cfg_state[64 / sizeof(u32)];
+#endif
 	u8			phy_addr;
 	u8			core_unit;
 

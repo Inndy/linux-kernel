@@ -6,6 +6,7 @@
 
 #include <linux/config.h>
 #include <linux/module.h>
+#include <linux/kgdb.h>
 #include <asm/uaccess.h>
 
 int fixup_exception(struct pt_regs *regs)
@@ -17,6 +18,12 @@ int fixup_exception(struct pt_regs *regs)
 		regs->pc = fixup->fixup;
 		return 1;
 	}
+#ifdef CONFIG_KGDB
+	if (atomic_read(&debugger_active) && kgdb_may_fault)
+		/* Restore our previous state. */
+		kgdb_fault_longjmp(kgdb_fault_jmp_regs);
+		/* Never reached. */
+#endif
 
 	return 0;
 }

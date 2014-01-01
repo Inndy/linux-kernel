@@ -9,6 +9,7 @@
 #include <linux/mm.h>
 #include <linux/smp_lock.h>
 #include <linux/interrupt.h>
+#include <linux/kgdb.h>
 
 #include <asm/pgtable.h>
 #include <asm/processor.h>
@@ -239,6 +240,10 @@ ia64_do_page_fault (unsigned long address, unsigned long isr, struct pt_regs *re
 	 * with extreme prejudice.
 	 */
 	bust_spinlocks(1);
+
+#ifdef CONFIG_KGDB
+	kgdb_handle_exception(14, SIGSEGV, isr, regs);
+#endif
 
 	if (address < PAGE_SIZE)
 		printk(KERN_ALERT "Unable to handle kernel NULL pointer dereference (address %016lx)\n", address);

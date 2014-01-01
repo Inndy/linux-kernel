@@ -142,6 +142,10 @@ struct sk_buff *alloc_skb(unsigned int size, int gfp_mask)
 
 	/* Get the DATA. Size must match skb_add_mtu(). */
 	size = SKB_DATA_ALIGN(size);
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	gfp_mask |= GFP_DMA;
+#endif
+
 	data = kmalloc(size + sizeof(struct skb_shared_info), gfp_mask);
 	if (!data)
 		goto nodata;
@@ -195,6 +199,11 @@ struct sk_buff *alloc_skb_from_cache(kmem_cache_t *cp,
 
 	/* Get the DATA. */
 	size = SKB_DATA_ALIGN(size);
+
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	gfp_mask |= GFP_DMA;
+#endif
+
 	data = kmem_cache_alloc(cp, gfp_mask);
 	if (!data)
 		goto nodata;
@@ -287,7 +296,7 @@ void __kfree_skb(struct sk_buff *skb)
 	secpath_put(skb->sp);
 #endif
 	if (skb->destructor) {
-		WARN_ON(in_irq());
+		//WARN_ON(in_irq());
 		skb->destructor(skb);
 	}
 #ifdef CONFIG_NETFILTER
@@ -576,6 +585,10 @@ int pskb_expand_head(struct sk_buff *skb, int nhead, int ntail, int gfp_mask)
 		BUG();
 
 	size = SKB_DATA_ALIGN(size);
+
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	gfp_mask |= GFP_DMA;
+#endif
 
 	data = kmalloc(size + sizeof(struct skb_shared_info), gfp_mask);
 	if (!data)

@@ -34,6 +34,7 @@
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
 #include <asm/tlb.h>
+#include <asm/cacheflush.h>
 
 DEFINE_PER_CPU(struct mmu_gather, mmu_gathers);
 
@@ -47,6 +48,8 @@ unsigned long highstart_pfn, highend_pfn;
  * don't have to care about aliases on other CPUs.
  */
 unsigned long empty_zero_page, zero_page_mask;
+
+extern unsigned long g_board_RAM_size;
 
 /*
  * Not static inline because used by IP27 special magic initialization code
@@ -83,7 +86,7 @@ pte_t *kmap_pte;
 pgprot_t kmap_prot;
 
 #define kmap_get_fixmap_pte(vaddr)					\
-	pte_offset_kernel(pmd_offset(pgd_offset_k(vaddr), (vaddr)), (vaddr))
+	pte_offset_kernel(pmd_offset(pud_offset(pgd_offset_k(vaddr), (vaddr)), (vaddr)), (vaddr))
 
 static void __init kmap_init(void)
 {
@@ -96,39 +99,44 @@ static void __init kmap_init(void)
 	kmap_prot = PAGE_KERNEL;
 }
 
-#ifdef CONFIG_MIPS64
-static void __init fixrange_init(unsigned long start, unsigned long end,
+#ifdef CONFIG_MIPS32
+void __init fixrange_init(unsigned long start, unsigned long end,
 	pgd_t *pgd_base)
 {
 	pgd_t *pgd;
+	pud_t *pud;
 	pmd_t *pmd;
 	pte_t *pte;
-	int i, j;
+	int i, j, k;
 	unsigned long vaddr;
 
 	vaddr = start;
 	i = __pgd_offset(vaddr);
-	j = __pmd_offset(vaddr);
+	j = __pud_offset(vaddr);
+	k = __pmd_offset(vaddr);
 	pgd = pgd_base + i;
 
 	for ( ; (i < PTRS_PER_PGD) && (vaddr != end); pgd++, i++) {
-		pmd = (pmd_t *)pgd;
-		for (; (j < PTRS_PER_PMD) && (vaddr != end); pmd++, j++) {
-			if (pmd_none(*pmd)) {
-				pte = (pte_t *) alloc_bootmem_low_pages(PAGE_SIZE);
-				set_pmd(pmd, __pmd(pte));
-				if (pte != pte_offset_kernel(pmd, 0))
-					BUG();
+		pud = (pud_t *)pgd;
+		for ( ; (j < PTRS_PER_PUD) && (vaddr != end); pud++, j++) {
+			pmd = (pmd_t *)pud;
+			for (; (k < PTRS_PER_PMD) && (vaddr != end); pmd++, k++) {
+				if (pmd_none(*pmd)) {
+					pte = (pte_t *) alloc_bootmem_low_pages(PAGE_SIZE);
+					set_pmd(pmd, __pmd(pte));
+					if (pte != pte_offset_kernel(pmd, 0))
+						BUG();
+				}
+				vaddr += PMD_SIZE;
 			}
-			vaddr += PMD_SIZE;
+			k = 0;
 		}
 		j = 0;
 	}
 }
-#endif /* CONFIG_MIPS64 */
+#endif /* CONFIG_MIPS32 */
 #endif /* CONFIG_HIGHMEM */
 
-#ifndef CONFIG_DISCONTIGMEM
 extern void pagetable_init(void);
 
 void __init paging_init(void)
@@ -137,6 +145,7 @@ void __init paging_init(void)
 	unsigned long max_dma, high, low;
 
 	pagetable_init();
+
 
 #ifdef CONFIG_HIGHMEM
 	kmap_init();
@@ -166,7 +175,72 @@ void __init paging_init(void)
 		zones_size[ZONE_HIGHMEM] = high - low;
 #endif
 
+#ifndef CONFIG_DISCONTIGMEM
 	free_area_init(zones_size);
+#elif defined( CONFIG_MIPS_BCM97438 ) || defined( CONFIG_MIPS_BCM7400 )
+       
+	max_dma = 256 << (20 - PAGE_SHIFT);
+	zones_size[ZONE_DMA]     = max_dma;
+	zones_size[ZONE_NORMAL]  = 0;    
+	zones_size[ZONE_HIGHMEM] = 0;
+	free_area_init_node(0, NODE_DATA(0), zones_size, 0, 0);
+
+	/* The bcm97438 can only DMA up to 256MB */
+
+	if (numnodes > 1) {
+		zones_size[ZONE_DMA]     = 0;
+		zones_size[ZONE_NORMAL]  = 0x10000000 >> PAGE_SHIFT;     
+		zones_size[ZONE_HIGHMEM] = 0;
+		free_area_init_node(1, NODE_DATA(1), zones_size, 0x20000000 >> PAGE_SHIFT, 0);
+		node_set_online(1);
+	}
+       
+#elif defined ( CONFIG_MIPS_BCM7440 )
+
+	/* 0x00000000 - 0x10000000 : 256 MB - DMAable */
+	max_dma = 256 << (20 - PAGE_SHIFT);
+	zones_size[ZONE_DMA]     = max_dma;
+	zones_size[ZONE_NORMAL]  = 0;
+	zones_size[ZONE_HIGHMEM] = 0;
+	free_area_init_node(0, NODE_DATA(0), zones_size, 0, 0);
+
+#ifdef NEVER
+	node_set_online(0);
+#endif
+
+	if (g_board_RAM_size == 0x20000000)
+	{
+		/* 0x20000000 - 0x30000000 : 256 MB */
+		zones_size[ZONE_DMA]     = 0;
+		zones_size[ZONE_NORMAL]  = 0x10000000 >> PAGE_SHIFT;
+		zones_size[ZONE_HIGHMEM] = 0;
+		free_area_init_node(1, NODE_DATA(1), zones_size, 0x20000000 >> PAGE_SHIFT, 0);
+		node_set_online(1); 
+	}
+	else
+	{
+		/* 0x20000000 - 0x40000000 : 512 MB */
+		zones_size[ZONE_DMA]     = 0;
+		zones_size[ZONE_NORMAL]  = 0x20000000 >> PAGE_SHIFT;
+		zones_size[ZONE_HIGHMEM] = 0;
+		free_area_init_node(1, NODE_DATA(1), zones_size, 0x20000000 >> PAGE_SHIFT, 0);
+		node_set_online(1); 
+
+#ifdef NEVER
+		/* 0x50000000 - 0x60000000 : 256 MB */
+		zones_size[ZONE_DMA]     = 0;
+		zones_size[ZONE_NORMAL]  = 0x10000000 >> PAGE_SHIFT;
+		zones_size[ZONE_HIGHMEM] = 0;
+		free_area_init_node(2, NODE_DATA(2), zones_size, 0x50000000 >> PAGE_SHIFT, 0);
+		node_set_online(2);
+
+#endif
+	}
+
+#else
+	#error "CONFIG_DISCONTIGMEM is NOT supported in MIPS32 architecture"
+#endif
+
 }
 
 #define PFN_UP(x)	(((x) + PAGE_SIZE - 1) >> PAGE_SHIFT)
@@ -200,23 +274,51 @@ void __init mem_init(void)
 	unsigned long tmp, ram;
 
 #ifdef CONFIG_HIGHMEM
+
 #ifdef CONFIG_DISCONTIGMEM
 #error "CONFIG_HIGHMEM and CONFIG_DISCONTIGMEM dont work together yet"
 #endif
 	max_mapnr = num_physpages = highend_pfn;
 #else
+#ifndef CONFIG_DISCONTIGMEM
 	max_mapnr = num_physpages = max_low_pfn;
-#endif
-	high_memory = (void *) __va(max_low_pfn << PAGE_SHIFT);
+/*	highmem_start_page = mem_map + max_mapnr; */
+#else
 
+	printk(KERN_WARNING "mem_init: max_pfn  0x%08lx max_low_pfn 0x%08lx\n", 
+                    max_low_pfn, max_pfn);
+	num_physpages = max_low_pfn = max_pfn;
+       
+#endif
+
+#endif
+	/* JWF highmem_start_page only relevent for CONFIG_HIGHMEM */
+	high_memory = (void *) __va(max_low_pfn << PAGE_SHIFT);
+#ifndef CONFIG_DISCONTIGMEM
 	totalram_pages += free_all_bootmem();
+#else
+	{
+		int node;
+
+		/*  Traverse in reverse order since Node-1 may tag its stuffs onto node 0 */
+		for (node=numnodes-1; node>= 0; node--) {
+			totalram_pages += free_all_bootmem_node(NODE_DATA(node));
+		}
+	}
+
+#endif
+
 	totalram_pages -= setup_zero_pages();	/* Setup zeroed pages.  */
 
 	reservedpages = ram = 0;
 	for (tmp = 0; tmp < max_low_pfn; tmp++)
 		if (page_is_ram(tmp)) {
 			ram++;
-			if (PageReserved(mem_map+tmp))
+#ifdef CONFIG_DISCONTIGMEM
+                        if (PageReserved(pfn_to_page(tmp)))
+#else
+                        if (PageReserved(mem_map+tmp))
+#endif
 				reservedpages++;
 		}
 
@@ -254,7 +356,6 @@ void __init mem_init(void)
 	       initsize >> 10,
 	       (unsigned long) (totalhigh_pages << (PAGE_SHIFT-10)));
 }
-#endif /* !CONFIG_DISCONTIGMEM */
 
 #ifdef CONFIG_BLK_DEV_INITRD
 void free_initrd_mem(unsigned long start, unsigned long end)
@@ -265,8 +366,8 @@ void free_initrd_mem(unsigned long start, unsigned long end)
 	end = (unsigned long)phys_to_virt(CPHYSADDR(end));
 #endif
 	if (start < end)
-		printk(KERN_INFO "Freeing initrd memory: %ldk freed\n",
-		       (end - start) >> 10);
+		printk(KERN_INFO "Freeing initrd memory: (%08lx-%08lx, %ldk freed\n",
+		       start, end, (end - start) >> 10);
 
 	for (; start < end; start += PAGE_SIZE) {
 		ClearPageReserved(virt_to_page(start));
@@ -283,10 +384,14 @@ void free_initmem(void)
 {
 	unsigned long addr, page, freed;
 
+	printk("free_initmem: init_begin=%08lx, init_end=%08lx\n", 
+	(unsigned long) &__init_begin, (unsigned long) &__init_end);
+
 	freed = prom_free_prom_memory();
 
 	addr = (unsigned long) &__init_begin;
 	while (addr < (unsigned long) &__init_end) {
+
 #ifdef CONFIG_MIPS64
 		page = PAGE_OFFSET | CPHYSADDR(addr);
 #else
@@ -301,4 +406,8 @@ void free_initmem(void)
 	}
 	printk(KERN_INFO "Freeing unused kernel memory: %ldk freed\n",
 	       freed >> 10);
+
+	// THT: Flush all caches, especially the I-cache since we freed the memory.
+	// WOuld crash here for MIPS 24K platforms.
+	flush_cache_all();
 }

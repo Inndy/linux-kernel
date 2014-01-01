@@ -207,6 +207,10 @@ struct mpsc_port_info *mpsc_device_remove(int index);
 #define	MPSC_RCRR			0x0004
 #define	MPSC_TCRR			0x0008
 
+/* MPSC Interrupt registers (offset from MV64x60_SDMA_INTR_OFFSET) */
+#define MPSC_INTR_CAUSE			0x0004
+#define MPSC_INTR_MASK			0x0084
+#define MPSC_INTR_CAUSE_RCC		(1<<6)
 /*
  *****************************************************************************
  *

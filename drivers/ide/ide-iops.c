@@ -30,6 +30,10 @@
 #include <asm/uaccess.h>
 #include <asm/io.h>
 
+#ifdef CONFIG_BLK_DEV_BRCM_PORT_MULT
+#include "bcmpm.h"
+#endif
+
 /*
  *	Conventional PIO operations for ATA devices
  */
@@ -192,11 +196,27 @@ u32 ide_read_24 (ide_drive_t *drive)
 	return (hcyl<<16)|(lcyl<<8)|sect;
 }
 
-void SELECT_DRIVE (ide_drive_t *drive)
+
+void SELECT_DRIVE(ide_drive_t *drive)
 {
+#ifdef CONFIG_BLK_DEV_BRCM_PORT_MULT
+	ide_hwif_t* hwif = HWIF(drive);
+	
+	if (bcmpm_detect_pm(hwif)) {
+		
+		/* Port multiplier only/always address drive A */
+		if (drive->select.b.unit) {
+			drive->select.b.unit = 0;
+		}
+		//HWIF(drive)->OUTB(drive->select.all, IDE_SELECT_REG);
+	}
+	/* Selectproc switch the PM's drive */
+#endif
+
 	if (HWIF(drive)->selectproc)
 		HWIF(drive)->selectproc(drive);
 	HWIF(drive)->OUTB(drive->select.all, IDE_SELECT_REG);
+
 }
 
 EXPORT_SYMBOL(SELECT_DRIVE);
@@ -307,6 +327,13 @@ static void atapi_input_bytes(ide_drive_t *drive, void *buffer, u32 bytecount)
 static void atapi_output_bytes(ide_drive_t *drive, void *buffer, u32 bytecount)
 {
 	ide_hwif_t *hwif = HWIF(drive);
+	unsigned char	 *cmd;
+	int	 do_interlock;
+
+	cmd  = (char *)buffer;
+	do_interlock = (drive->using_dma && drive->media == ide_cdrom
+			 && (cmd[0] == 0x28 || cmd[0] == 0xa8)) ? 1 : 0;
+
 
 	++bytecount;
 #if defined(CONFIG_ATARI) || defined(CONFIG_Q40)
@@ -316,9 +343,27 @@ static void atapi_output_bytes(ide_drive_t *drive, void *buffer, u32 bytecount)
 		return;
 	}
 #endif /* CONFIG_ATARI || CONFIG_Q40 */
+	if (do_interlock)
+	    local_irq_disable();
+
 	hwif->ata_output_data(drive, buffer, bytecount / 4);
 	if ((bytecount & 0x03) >= 2)
 		hwif->OUTSW(IDE_DATA_REG, ((u8*)buffer)+(bytecount & ~0x03), 1);
+
+	if (do_interlock) {
+	    int delay_cnt = 100;
+
+	    local_irq_enable();
+
+	    while ((hwif->INB(IDE_STATUS_REG) & DRQ_STAT) && --delay_cnt) {
+		udelay(1);
+	    }
+	    if (delay_cnt == 0)
+		printk(KERN_ERR "atapi_output_bytes: IDE CD DMA DEVICE - EXHAUSTED WAIT FOR CDB TRANSMIT!\n");
+
+	    /* Delay to guarantee CDB transmission */
+	    udelay(10);
+	}
 }
 
 void default_hwif_transport(ide_hwif_t *hwif)
@@ -764,7 +809,12 @@ int ide_driveid_update (ide_drive_t *drive)
 	}
 	local_irq_save(flags);
 	SELECT_MASK(drive, 0);
-	id = kmalloc(SECTOR_WORDS*4, GFP_ATOMIC);
+        id = kmalloc(SECTOR_WORDS*4,
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+                        GFP_DMA |
+#endif
+                        GFP_ATOMIC);
+
 	if (!id) {
 		local_irq_restore(flags);
 		return 0;

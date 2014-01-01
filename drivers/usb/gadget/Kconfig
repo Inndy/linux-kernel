@@ -352,6 +352,15 @@ config USB_FILE_STORAGE
 
 	  Say "y" to link the driver statically, or "m" to build a
 	  dynamically linked module called "g_file_storage".
+	  
+config HDR5K_USB_STORAGE
+	tristate "HDR5000 USB Storage Gadget"
+	help
+	  Humax HDR-5000 Storage Gadget device driver.
+	  It works with Humax storage driver only!
+
+	  Say "y" to link the driver statically, or "m" to build a
+	  dynamically linked module called "g_file_storage".	  
 
 config USB_FILE_STORAGE_TEST
 	bool "File-backed Storage Gadget testing version"

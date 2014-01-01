@@ -6,8 +6,9 @@
 #define _ASM_MMZONE_H_
 
 #include <asm/page.h>
-#include <mmzone.h>
 
+#ifndef CONFIG_DISCONTIGMEM
+#include <mmzone.h>
 #define kvaddr_to_nid(kvaddr)	pa_to_nid(__pa(kvaddr))
 #define pfn_to_nid(pfn)		pa_to_nid((pfn) << PAGE_SHIFT)
 
@@ -35,5 +36,13 @@
 
 /* XXX: FIXME -- wli */
 #define kern_addr_valid(addr)	(0)
+#else
+
+#include <linux/mmzone.h>
+#include <asm/brcmstb/common/discontig.h>
+
+#endif
+
+
 
 #endif /* _ASM_MMZONE_H_ */

@@ -46,6 +46,9 @@ EXPORT_SYMBOL(strrchr);
 EXPORT_SYMBOL(strstr);
 
 EXPORT_SYMBOL(kernel_thread);
+#ifdef CONFIG_I8259
+EXPORT_SYMBOL(enable_8259A_irq);
+#endif
 
 /*
  * Userspace access stuff.

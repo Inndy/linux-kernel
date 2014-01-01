@@ -26,3 +26,6 @@ $(obj)/version.o: include/linux/compile.h
 include/linux/compile.h: FORCE
 	@echo '  CHK     $@'
 	@$(CONFIG_SHELL) $(srctree)/scripts/mkcompile_h $@ "$(UTS_MACHINE)" "$(CONFIG_SMP)" "$(CC) $(CFLAGS)"
+ifneq ($(strip $(BRCM_VERSION)),)
+	@echo \#define BRCM_VERSION \"$(BRCM_VERSION)\" >> $@
+endif

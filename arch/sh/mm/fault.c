@@ -28,7 +28,6 @@
 #include <asm/pgalloc.h>
 #include <asm/mmu_context.h>
 #include <asm/cacheflush.h>
-#include <asm/kgdb.h>
 
 extern void die(const char *,struct pt_regs *,long);
 
@@ -44,11 +43,6 @@ asmlinkage void do_page_fault(struct pt_regs *regs, unsigned long writeaccess,
 	struct mm_struct *mm;
 	struct vm_area_struct * vma;
 	unsigned long page;
-
-#ifdef CONFIG_SH_KGDB
-	if (kgdb_nofault && kgdb_bus_err_hook)
-		kgdb_bus_err_hook();
-#endif
 
 	tsk = current;
 	mm = tsk->mm;
@@ -153,6 +147,7 @@ no_context:
 	}
 	die("Oops", regs, writeaccess);
 	do_exit(SIGKILL);
+	dump_stack();
 
 /*
  * We ran out of memory, or some other thing happened to us that made
@@ -198,11 +193,6 @@ asmlinkage int __do_page_fault(struct pt_regs *regs, unsigned long writeaccess,
 	pmd_t *pmd;
 	pte_t *pte;
 	pte_t entry;
-
-#ifdef CONFIG_SH_KGDB
-	if (kgdb_nofault && kgdb_bus_err_hook)
-		kgdb_bus_err_hook();
-#endif
 
 #ifdef CONFIG_SH_STORE_QUEUES
 	addrmax = P4SEG_STORE_QUE + 0x04000000;

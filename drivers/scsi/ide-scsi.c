@@ -172,6 +172,22 @@ static void idescsi_input_buffers (ide_drive_t *drive, idescsi_pc_t *pc, unsigne
 	int count;
 	char *buf;
 
+#if defined ( CONFIG_MIPS_BCM97438 )    /* GROT */
+	extern int cache_debug; 
+
+	if ( (unsigned long) pc->sg->dma_address >= 0xe0000000) {
+		printk("$$$$$$$$$$$$$$$$$$$$$$$$ idescsi_input_buffers: sg->address=%08x\n", pc->sg->dma_address);
+		//cache_debug = 1;
+	}
+#elif defined ( CONFIG_MIPS_BCM7440 )
+	extern int cache_debug;
+
+	if ( (unsigned long) pc->sg->dma_address >= 0xd8000000) {
+		printk("$$$$$$$$$$$$$$$$$$$$$$$$ idescsi_input_buffers: sg->address=%08x\n", pc->sg->dma_address);
+		//cache_debug = 1;
+	}
+#endif
+
 	while (bcount) {
 		if (pc->sg - (struct scatterlist *) pc->scsi_cmd->request_buffer > pc->scsi_cmd->use_sg) {
 			printk (KERN_ERR "ide-scsi: scatter gather table too small, discarding data\n");
@@ -203,6 +219,22 @@ static void idescsi_output_buffers (ide_drive_t *drive, idescsi_pc_t *pc, unsign
 {
 	int count;
 	char *buf;
+
+#if defined ( CONFIG_MIPS_BCM97438 )   /* GROT */
+	extern int cache_debug; 
+
+	if ( (unsigned long) pc->sg->dma_address >= 0xe0000000) {
+		printk("$$$$$$$$$$$$$$$$$$$$$$$$ idescsi_input_buffers: sg->address=%08x\n", pc->sg->dma_address);
+		//cache_debug = 1;
+	}
+#elif defined ( CONFIG_MIPS_BCM7440 )
+	extern int cache_debug;
+
+	if ( (unsigned long) pc->sg->dma_address >= 0xd8000000) {
+		printk("$$$$$$$$$$$$$$$$$$$$$$$$ idescsi_input_buffers: sg->address=%08x\n", pc->sg->dma_address);
+		//cache_debug = 1;
+	}
+#endif
 
 	while (bcount) {
 		if (pc->sg - (struct scatterlist *) pc->scsi_cmd->request_buffer > pc->scsi_cmd->use_sg) {
@@ -252,7 +284,11 @@ static inline void idescsi_transform_pc1 (ide_drive_t *drive, idescsi_pc_t *pc)
 			unsigned short new_len;
 			if (!scsi_buf)
 				return;
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+			if ((atapi_buf = kmalloc(pc->buffer_size + 4, GFP_ATOMIC | GFP_DMA)) == NULL)
+#else
 			if ((atapi_buf = kmalloc(pc->buffer_size + 4, GFP_ATOMIC)) == NULL)
+#endif
 				return;
 			memset(atapi_buf, 0, pc->buffer_size + 4);
 			memset (c, 0, 12);
@@ -322,7 +358,11 @@ static int idescsi_check_condition(ide_drive_t *drive, struct request *failed_co
 	/* stuff a sense request in front of our current request */
 	pc = kmalloc (sizeof (idescsi_pc_t), GFP_ATOMIC);
 	rq = kmalloc (sizeof (struct request), GFP_ATOMIC);
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	buf = kmalloc(SCSI_SENSE_BUFFERSIZE, GFP_ATOMIC | GFP_DMA);
+#else
 	buf = kmalloc(SCSI_SENSE_BUFFERSIZE, GFP_ATOMIC);
+#endif
 	if (pc == NULL || rq == NULL || buf == NULL) {
 		if (pc) kfree(pc);
 		if (rq) kfree(rq);
@@ -386,15 +426,17 @@ static int idescsi_end_request (ide_drive_t *drive, int uptodate, int nrsecs)
 	struct request *rq = HWGROUP(drive)->rq;
 	idescsi_pc_t *pc = (idescsi_pc_t *) rq->special;
 	int log = test_bit(IDESCSI_LOG_CMD, &scsi->log);
+	int errcnt = rq->errors;
 	struct Scsi_Host *host;
 	u8 *scsi_buf;
 	unsigned long flags;
 
-	if (!(rq->flags & (REQ_SPECIAL|REQ_SENSE))) {
+	if ((errcnt == 0) && !(rq->flags & (REQ_SPECIAL|REQ_SENSE))) {
 		ide_end_request(drive, uptodate, nrsecs);
 		return 0;
 	}
 	ide_end_drive_cmd (drive, 0, 0);
+
 	if (rq->flags & REQ_SENSE) {
 		idescsi_pc_t *opc = (idescsi_pc_t *) rq->buffer;
 		if (log) {
@@ -414,11 +456,11 @@ static int idescsi_end_request (ide_drive_t *drive, int uptodate, int nrsecs)
 			printk (KERN_WARNING "ide-scsi: %s: timed out for %lu\n",
 					drive->name, pc->scsi_cmd->serial_number);
 		pc->scsi_cmd->result = DID_TIME_OUT << 16;
-	} else if (rq->errors >= ERROR_MAX) {
+	} else if (errcnt >= ERROR_MAX) {
 		pc->scsi_cmd->result = DID_ERROR << 16;
 		if (log)
 			printk ("ide-scsi: %s: I/O error for %lu\n", drive->name, pc->scsi_cmd->serial_number);
-	} else if (rq->errors) {
+	} else if (errcnt) {
 		if (log)
 			printk ("ide-scsi: %s: check condition for %lu\n", drive->name, pc->scsi_cmd->serial_number);
 		if (!idescsi_check_condition(drive, rq))

@@ -11,6 +11,7 @@
 
 #include <linux/config.h>
 
+
 /*
  * This assumes you have a 1.8432 MHz clock for your UART.
  *
@@ -78,6 +79,110 @@
 #define JAZZ_SERIAL_PORT_DEFNS
 #endif
 
+#if defined(CONFIG_MIPS_BRCM97XXX) 
+
+#include <asm/brcmstb/common/serial.h>
+#include <linux/serial_core.h>
+
+/* 
+ * Legacy bcm3250 style UARTs 
+ */
+/* Added BCM93725 serial port defs 11-07-00 M. Steiger */
+#define _BRCM_SERIAL_INIT(int, base)					\
+	{ baud_base: BRCM_BASE_BAUD, irq: int, flags: STD_COM_FLAGS,	\
+	  xmit_fifo_size: 1, iomem_base: (u8 *) base,	\
+	  iomem_reg_shift: 0,			\
+	  io_type: SERIAL_IO_MEM }
+
+/*
+ * 16550A style UARTs
+ */
+
+#ifdef CONFIG_MIPS_BRCM_IKOS
+#define _BRCM_16550_INIT(int, base)			\
+	{ baud_base:  ( BRCM_BASE_BAUD_16550 ),		\
+	  irq: int,								\
+	  flags: STD_COM_FLAGS|UPF_SPD_WARP,	/* THT Added Warp for 375000 baud */\
+	  iomem_base: (u8 *) base,				\
+	  iomem_reg_shift: 2,					\
+	  io_type: SERIAL_IO_MEM /* 4 byte aligned */ \
+	}
+
+#else
+
+
+#define _BRCM_16550_INIT(int, base)			\
+	{ baud_base:  ( BRCM_BASE_BAUD_16550 ),		\
+	  irq: int,								\
+	  flags: STD_COM_FLAGS|UPF_SPD_SHI,  /* 115200 */  \
+	  iomem_base: (u8 *) base,				\
+	  iomem_reg_shift: 2,					\
+	  io_type: SERIAL_IO_MEM /* 4 byte aligned */ \
+	}
+#endif // If On Ikos, turn on WARP
+
+/* 3 or more 16550 UART on 7400 and 7118 */
+#if defined(CONFIG_MIPS_BCM7400) || defined(CONFIG_MIPS_BCM7118) 
+
+/* 3 16550A compatible UARTs */
+#define BRCM_UART_PORT_DEFNS				\
+	_BRCM_16550_INIT(BRCM_SERIAL1_IRQ, BRCM_SERIAL1_BASE),		\
+	_BRCM_16550_INIT(BRCM_SERIAL2_IRQ, BRCM_SERIAL2_BASE),      \
+	_BRCM_16550_INIT(BRCM_SERIAL3_IRQ, BRCM_SERIAL3_BASE),	
+
+#elif defined(CONFIG_MIPS_BCM7440) 
+#define BRCM_UART_PORT_DEFNS                            \
+        _BRCM_16550_INIT(BRCM_SERIAL1_IRQ, BRCM_SERIAL1_BASE),      \
+        _BRCM_16550_INIT(BRCM_SERIAL2_IRQ, BRCM_SERIAL2_BASE),      \
+        _BRCM_16550_INIT(BRCM_SERIAL3_IRQ, BRCM_SERIAL3_BASE),      \
+        _BRCM_16550_INIT(BRCM_SERIAL4_IRQ, BRCM_SERIAL4_BASE),  
+
+#elif defined(CONFIG_MIPS_BCM7401B0) || defined(CONFIG_MIPS_BCM7402) || \
+      defined(CONFIG_MIPS_BCM7401C0) || defined(CONFIG_MIPS_BCM7452A0)
+
+
+  /* 2 legacy bcm3250 UARTs +  1 16550A compatible UART */
+#define BRCM_SERIAL_PORT_DEFNS				\
+	_BRCM_SERIAL_INIT(BRCM_SERIAL1_IRQ, BRCM_SERIAL1_BASE), \
+
+#if 0 // UARTA is not used
+	_BRCM_SERIAL_INIT(BRCM_SERIAL0_IRQ, BRCM_SERIAL0_BASE),
+
+#endif
+
+#define BRCM_UART_PORT_DEFNS \
+	_BRCM_16550_INIT(BRCM_SERIAL2_IRQ, BRCM_SERIAL2_BASE), \
+
+
+#elif defined(CONFIG_MIPS_BCM7403A0)
+  /* 2 legacy bcm3250 UARTs +  1 16550A compatible UART */
+#define BRCM_SERIAL_PORT_DEFNS                                  \
+        _BRCM_SERIAL_INIT(BRCM_SERIAL1_IRQ, BRCM_SERIAL1_BASE), \
+        _BRCM_SERIAL_INIT(BRCM_SERIAL2_IRQ, BRCM_SERIAL2_BASE), 
+
+#define BRCM_UART_PORT_DEFNS \
+        _BRCM_16550_INIT(BRCM_SERIAL3_IRQ, BRCM_SERIAL3_BASE), \
+
+
+  
+
+#elif defined( CONFIG_MIPS_BCM7115 )
+#define BRCM_SERIAL_PORT_DEFNS						\
+	_BRCM_SERIAL_INIT(BRCM_SERIAL1_IRQ, BRCM_SERIAL1_BASE),		\
+	_BRCM_SERIAL_INIT(BRCM_SERIAL2_IRQ, BRCM_SERIAL2_BASE),		\
+	_BRCM_SERIAL_INIT(BRCM_SERIAL3_IRQ, BRCM_SERIAL3_BASE),		\
+	_BRCM_SERIAL_INIT(BRCM_SERIAL4_IRQ, BRCM_SERIAL4_BASE),
+	
+
+#else
+#define BRCM_SERIAL_PORT_DEFNS						\
+	_BRCM_SERIAL_INIT(BRCM_SERIAL1_IRQ, BRCM_SERIAL1_BASE),		\
+	_BRCM_SERIAL_INIT(BRCM_SERIAL2_IRQ, BRCM_SERIAL2_BASE),
+
+  
+#endif //#if various BRCM platforms
+#endif // #ifdef BRCM_97XXX
+
 #ifdef CONFIG_MIPS_COBALT
 #include <asm/cobalt/cobalt.h>
 #define COBALT_BASE_BAUD  (18432000 / 16)
@@ -137,17 +242,6 @@
       .irq = IT8172_SCR1_IRQ, .flags = STD_COM_FLAGS, .type = 0x3 },
 #else
 #define IVR_SERIAL_PORT_DEFNS
-#endif
-
-#ifdef CONFIG_TOSHIBA_JMR3927
-#include <asm/jmr3927/jmr3927.h>
-#define TXX927_SERIAL_PORT_DEFNS                              \
-    { .baud_base = JMR3927_BASE_BAUD, .port = UART0_ADDR, .irq = UART0_INT,  \
-      .flags = UART0_FLAGS, .type = 1 },                        \
-    { .baud_base = JMR3927_BASE_BAUD, .port = UART1_ADDR, .irq = UART1_INT,  \
-      .flags = UART1_FLAGS, .type = 1 },
-#else
-#define TXX927_SERIAL_PORT_DEFNS
 #endif
 
 #ifdef CONFIG_SERIAL_AU1X00
@@ -232,6 +326,58 @@
 #define AU1000_SERIAL_PORT_DEFNS
 #endif
 
+
+#ifdef CONFIG_BCM93725
+#include <asm/brcm/bcm93725.h>
+#define BCM93725_SERIAL_PORT_DEFNS \
+	{ baud_base:  ( 13500000 / 16 ),				\
+	  irq: IRQ_UART,						\
+	  flags: ASYNC_BOOT_AUTOCONF,					\
+	  iomem_base: (u8 *) UART_BASE_NOCACHE,				\
+	  iomem_reg_shift: 0,						\
+	  io_type: SERIAL_IO_MEM },
+#else
+#define BCM93725_SERIAL_PORT_DEFNS
+#endif
+
+#ifdef CONFIG_BCM93730
+#define _BRCM_SERIAL_INIT(int, base)					\
+	{ baud_base: BRCM_BASE_BAUD, irq: int, flags: STD_COM_FLAGS,	\
+	  xmit_fifo_size: 1, iomem_base: (u8 *) base,			\
+	  iomem_reg_shift: 0,						\
+	  io_type: SERIAL_IO_MEM }
+#define BCM93730_SERIAL_PORT_DEFNS					\
+	_BRCM_SERIAL_INIT(17, 0xb50007b0),
+/*
+ *	_BRCM_SERIAL_INIT(18, 0xb50007c0),
+ *
+ *	Only uncomment if you are not going to use KGDB
+ */
+#else
+#define BCM93730_SERIAL_PORT_DEFNS
+#endif
+
+#ifdef CONFIG_BCM4710
+#include <bcm4710.h>
+
+#define BCM4710_SERIAL_PORT_DEFNS \
+	{ baud_base:  ( 13500000 / 16 ),				\
+	  irq: 2,							\
+	  flags: STD_COM_FLAGS,						\
+	  iomem_base: (u8 *) KSEG1ADDR(BCM4710_EUART),			\
+	  iomem_reg_shift: 0,						\
+	  io_type: SERIAL_IO_MEM },					\
+	{ baud_base:  ( 13500000 / 16 ),				\
+	  irq: 2,							\
+	  flags: STD_COM_FLAGS,						\
+	  iomem_base: (u8 *) KSEG1ADDR(BCM4710_EUART + 8),		\
+	  iomem_reg_shift: 0,						\
+	  io_type: SERIAL_IO_MEM },
+#else
+#define BCM4710_SERIAL_PORT_DEFNS
+#endif
+
+
 #ifdef CONFIG_HAVE_STD_PC_SERIAL_PORT
 #define STD_SERIAL_PORT_DEFNS			\
 	/* UART CLK   PORT IRQ     FLAGS        */			\
@@ -309,9 +455,9 @@
 #define JAGUAR_ATX_SERIAL1_BASE	0xfd000023L
 
 #define _JAGUAR_ATX_SERIAL_INIT(int, base)				\
-	{ baud_base: JAGUAR_ATX_BASE_BAUD, irq: int,			\
-	  flags: (ASYNC_BOOT_AUTOCONF | ASYNC_SKIP_TEST),		\
-	  iomem_base: (u8 *) base, iomem_reg_shift: 2,			\
+	{ .baud_base = JAGUAR_ATX_BASE_BAUD, irq: int,			\
+	  .flags = (ASYNC_BOOT_AUTOCONF | ASYNC_SKIP_TEST),		\
+	  .iomem_base = (u8 *) base, iomem_reg_shift: 2,			\
 	  io_type: SERIAL_IO_MEM }
 #define MOMENCO_JAGUAR_ATX_SERIAL_PORT_DEFNS				\
 	_JAGUAR_ATX_SERIAL_INIT(JAGUAR_ATX_SERIAL1_IRQ, JAGUAR_ATX_SERIAL1_BASE)
@@ -325,9 +471,9 @@
 #define OCELOT_3_SERIAL_BASE	(signed)0xfd000020
 
 #define _OCELOT_3_SERIAL_INIT(int, base)				\
-	{ baud_base: OCELOT_3_BASE_BAUD, irq: int, 			\
-	  flags: STD_COM_FLAGS,						\
-	  iomem_base: (u8 *) base, iomem_reg_shift: 2,			\
+	{ .baud_base = OCELOT_3_BASE_BAUD, irq: int, 			\
+	  .flags = STD_COM_FLAGS,						\
+	  .iomem_base = (u8 *) base, iomem_reg_shift: 2,			\
 	  io_type: SERIAL_IO_MEM }
 
 #define MOMENCO_OCELOT_3_SERIAL_PORT_DEFNS				\
@@ -424,7 +570,6 @@
 #endif /* CONFIG_SGI_IP32 */
 
 #define SERIAL_PORT_DFNS				\
-	COBALT_SERIAL_PORT_DEFNS			\
 	DDB5477_SERIAL_PORT_DEFNS			\
 	EV96100_SERIAL_PORT_DEFNS			\
 	EXTRA_SERIAL_PORT_DEFNS				\
@@ -438,7 +583,9 @@
 	MOMENCO_OCELOT_C_SERIAL_PORT_DEFNS		\
 	MOMENCO_OCELOT_SERIAL_PORT_DEFNS		\
 	MOMENCO_OCELOT_3_SERIAL_PORT_DEFNS		\
-	TXX927_SERIAL_PORT_DEFNS                        \
-	AU1000_SERIAL_PORT_DEFNS
+	AU1000_SERIAL_PORT_DEFNS		\
+	BCM93730_SERIAL_PORT_DEFNS	\
+	BRCM_SERIAL_PORT_DEFNS	\
+      /*BRCM_UART_PORT_DEFNS */
 
 #endif /* _ASM_SERIAL_H */

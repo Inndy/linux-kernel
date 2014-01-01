@@ -1,0 +1,13 @@
+#
+# USB Class driver configuration
+#
+comment "HUMAX USB Bluetooth drivers"
+	depends on USB
+
+config USB_BLUETOOTH
+	tristate "humax entavio bluetooth driver"
+	depends on USB
+	---help---
+	humax entavio bluetooth driver
+
+#	To compile this driver as a module, choose M here: the module will be called entavio_bluetooth.

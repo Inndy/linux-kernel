@@ -632,7 +632,7 @@ out:
 	preempt_enable();
 }
 
-extern void add_input_randomness(unsigned int type, unsigned int code,
+void add_input_randomness(unsigned int type, unsigned int code,
 				 unsigned int value)
 {
 	static unsigned char last_value;
@@ -667,6 +667,7 @@ void add_disk_randomness(struct gendisk *disk)
 			     0x100 + MKDEV(disk->major, disk->first_minor));
 }
 
+EXPORT_SYMBOL(add_input_randomness);
 EXPORT_SYMBOL(add_disk_randomness);
 
 #define EXTRACT_SIZE 10

@@ -102,7 +102,7 @@
 2:
 #endif
 
-#ifdef CONFIG_KGDB
+#ifdef CONFIG_KGDB_SIBYTE
 	/* KGDB (uart 1) interrupt is routed to IP[6] */
 	andi	t1, s0, CAUSEF_IP6
 	beqz	t1, 1f

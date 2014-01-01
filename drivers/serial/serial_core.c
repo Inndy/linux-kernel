@@ -331,10 +331,20 @@ uart_get_baud_rate(struct uart_port *port, struct termios *termios,
 	if (flags == UPF_SPD_SHI)
 		altbaud = 230400;
 	if (flags == UPF_SPD_WARP)
+#ifdef CONFIG_MIPS_BRCM_IKOS
+		altbaud =  375000;  // 460800;
+#else
 		altbaud = 460800;
+#endif
 
 	for (try = 0; try < 2; try++) {
 		baud = tty_termios_baud_rate(termios);
+
+#ifdef CONFIG_MIPS_BRCM_IKOS
+		baud = 375000;
+		return baud;
+#endif
+
 
 		/*
 		 * The spd_hi, spd_vhi, spd_shi, spd_warp kludge...
@@ -856,7 +866,11 @@ uart_tiocmset(struct tty_struct *tty, struct file *file,
 static void uart_break_ctl(struct tty_struct *tty, int break_state)
 {
 	struct uart_state *state = tty->driver_data;
-	struct uart_port *port = state->port;
+	struct uart_port *port;
+
+	if (!state)
+		return;
+	port = state->port;
 
 	BUG_ON(!kernel_locked());
 

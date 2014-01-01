@@ -42,6 +42,9 @@
 				 * low-level drivers */
 #undef ATAPI_ENABLE_DMADIR	/* enables ATAPI DMADIR bridge support */
 
+#if defined(CONFIG_MIPS_BCM7440)
+#define ATA_ENABLE_ATAPI	/* define to enable ATAPI support */
+#endif
 
 /* note: prints function name for you */
 #ifdef ATA_DEBUG

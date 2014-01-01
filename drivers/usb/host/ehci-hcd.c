@@ -25,7 +25,16 @@
 #endif
 
 #include <linux/module.h>
-#include <linux/pci.h>
+#ifdef CONFIG_USB_BRCM
+  #define EHCI_BRCM
+
+#if defined(CONFIG_PCI) && defined(CONFIG_SWAP_IO_SPACE_L)
+#undef CONFIG_SWAP_IO_SPACE_L
+#endif
+
+#else
+  #include <linux/pci.h>
+#endif
 #include <linux/dmapool.h>
 #include <linux/kernel.h>
 #include <linux/delay.h>
@@ -137,6 +146,10 @@ MODULE_PARM_DESC (park, "park setting; 1-3 back-to-back async packets");
 #define	INTR_MASK (STS_IAA | STS_FATAL | STS_PCD | STS_ERR | STS_INT)
 
 /*-------------------------------------------------------------------------*/
+
+#ifdef CONFIG_USB_BRCM
+#include "brcmusb.h"
+#endif
 
 #include "ehci.h"
 #include "ehci-dbg.c"
@@ -1228,7 +1241,11 @@ static const struct hc_driver ehci_driver = {
 
 /* EHCI 1.0 doesn't require PCI */
 
-#ifdef	CONFIG_PCI
+#ifdef CONFIG_USB_BRCM
+  #include "ehci-brcm.c"
+
+#else
+  #ifdef	CONFIG_PCI
 
 /* PCI driver selection metadata; PCI hotplugging uses this */
 static const struct pci_device_id pci_ids [] = { {
@@ -1254,14 +1271,10 @@ static struct pci_driver ehci_pci_driver = {
 #endif
 };
 
-#endif	/* PCI */
+  #endif	/* PCI */
 
 
 #define DRIVER_INFO DRIVER_VERSION " " DRIVER_DESC
-
-MODULE_DESCRIPTION (DRIVER_INFO);
-MODULE_AUTHOR (DRIVER_AUTHOR);
-MODULE_LICENSE ("GPL");
 
 static int __init init (void) 
 {
@@ -1282,3 +1295,8 @@ static void __exit cleanup (void)
 	pci_unregister_driver (&ehci_pci_driver);
 }
 module_exit (cleanup);
+#endif /* if CONFIG_USB_BRCM else */
+
+MODULE_DESCRIPTION (DRIVER_INFO);
+MODULE_AUTHOR (DRIVER_AUTHOR);
+MODULE_LICENSE ("GPL");

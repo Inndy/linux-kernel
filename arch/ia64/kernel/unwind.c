@@ -72,10 +72,68 @@
 # define STAT(x...)
 #endif
 
+#ifdef	CONFIG_KGDB
+#define	KGDB_EARLY_SIZE	100
+static struct unw_reg_state __initdata kgdb_reg_state[KGDB_EARLY_SIZE];
+static struct unw_labeled_state __initdata kgdb_labeled_state[KGDB_EARLY_SIZE];
+void __initdata *kgdb_reg_state_free, __initdata *kgdb_labeled_state_free;
+
+static void __init
+kgdb_malloc_init(void)
+{
+	int i;
+
+	kgdb_reg_state_free = kgdb_reg_state;
+	for (i = 1; i < KGDB_EARLY_SIZE; i++) {
+		*((unsigned long *) &kgdb_reg_state[i]) = (unsigned long) kgdb_reg_state_free;
+		kgdb_reg_state_free = &kgdb_reg_state[i];
+	}
+
+	kgdb_labeled_state_free = kgdb_labeled_state;
+	for (i = 1; i < KGDB_EARLY_SIZE; i++) {
+		*((unsigned long *) &kgdb_labeled_state[i]) =
+			(unsigned long) kgdb_labeled_state_free;
+		kgdb_labeled_state_free = &kgdb_labeled_state[i];
+	}
+
+}
+
+static void * __init
+kgdb_malloc(void **mem)
+{
+	void *p;
+
+	p = *mem;
+	*mem = *((void **) p);
+	return p;
+}
+
+static void __init
+kgdb_free(void **mem, void *p)
+{
+	*((void **)p) = *mem;
+	*mem = p;
+}
+
+#define alloc_reg_state()	(!malloc_sizes[0].cs_cachep ? 		\
+		kgdb_malloc(&kgdb_reg_state_free) : 			\
+		kmalloc(sizeof(struct unw_reg_state), GFP_ATOMIC))
+#define free_reg_state(usr)	(!malloc_sizes[0].cs_cachep ?		\
+		kgdb_free(&kgdb_reg_state_free, usr) :			\
+		kfree(usr))
+#define alloc_labeled_state()	(!malloc_sizes[0].cs_cachep ?		\
+		kgdb_malloc(&kgdb_labeled_state_free) :			\
+		kmalloc(sizeof(struct unw_labeled_state), GFP_ATOMIC))
+#define free_labeled_state(usr)	(!malloc_sizes[0].cs_cachep ?		\
+		kgdb_free(&kgdb_labeled_state_free, usr) :		\
+		kfree(usr))
+
+#else
 #define alloc_reg_state()	kmalloc(sizeof(struct unw_reg_state), GFP_ATOMIC)
 #define free_reg_state(usr)	kfree(usr)
 #define alloc_labeled_state()	kmalloc(sizeof(struct unw_labeled_state), GFP_ATOMIC)
 #define free_labeled_state(usr)	kfree(usr)
+#endif
 
 typedef unsigned long unw_word;
 typedef unsigned char unw_hash_index_t;
@@ -237,6 +295,24 @@ static struct {
 	}
 #endif
 };
+
+#ifdef	CONFIG_KGDB
+/*
+ * This makes it safe to call breakpoint() very early
+ * in setup_arch providing:
+ *	1) breakpoint isn't called between lines in cpu_init
+ *	   where init_mm.mm_count is incremented and ia64_mmu_init
+ *	   is called.  Otherwise the test below is invalid.
+ *	2) the memory examined doesn't result in tlbmiss.
+ */
+static unsigned long inline kgdb_unimpl_va_mask(void)
+{
+	if (atomic_read(&init_mm.mm_count) > 1)
+		return local_cpu_data->unimpl_va_mask;
+	else
+		return 0UL;
+}
+#endif
 
 static inline int
 read_only (void *addr)
@@ -1786,7 +1862,11 @@ run_script (struct unw_script *script, struct unw_frame_info *state)
 
 		      case UNW_INSN_LOAD:
 #ifdef UNW_DEBUG
+#ifdef	CONFIG_KGDB
+			if ((s[val] & (kgdb_unimpl_va_mask() | 0x7)) != 0
+#else
 			if ((s[val] & (local_cpu_data->unimpl_va_mask | 0x7)) != 0
+#endif
 			    || s[val] < TASK_SIZE)
 			{
 				UNW_DPRINT(0, "unwind.%s: rejecting bad psp=0x%lx\n",
@@ -1821,7 +1901,11 @@ find_save_locs (struct unw_frame_info *info)
 	struct unw_script *scr;
 	unsigned long flags = 0;
 
+#ifdef	CONFIG_KGDB
+	if ((info->ip & (kgdb_unimpl_va_mask() | 0xf)) || info->ip < TASK_SIZE) {
+#else
 	if ((info->ip & (local_cpu_data->unimpl_va_mask | 0xf)) || info->ip < TASK_SIZE) {
+#endif
 		/* don't let obviously bad addresses pollute the cache */
 		/* FIXME: should really be level 0 but it occurs too often. KAO */
 		UNW_DPRINT(1, "unwind.%s: rejecting bad ip=0x%lx\n", __FUNCTION__, info->ip);
@@ -2271,6 +2355,9 @@ unw_init (void)
 
 	init_unwind_table(&unw.kernel_table, "kernel", KERNEL_START, (unsigned long) __gp,
 			  __start_unwind, __end_unwind);
+#ifdef	CONFIG_KGDB
+	kgdb_malloc_init();
+#endif
 }
 
 /*

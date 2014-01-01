@@ -89,6 +89,10 @@
 #define SD_MAX_RETRIES		5
 #define SD_PASSTHROUGH_RETRIES	1
 
+atomic_t conn_status;
+extern wait_queue_head_t sd_conn_wait;
+extern int no_connection_change;
+
 static void scsi_disk_release(struct kref *kref);
 
 struct scsi_disk {
@@ -1614,6 +1618,13 @@ static int sd_probe(struct device *dev)
 	       gd->disk_name, sdp->host->host_no, sdp->channel,
 	       sdp->id, sdp->lun);
 
+	if(index<24 && index>=0)
+	{
+		atomic_add((0x01<<index),&conn_status);
+		no_connection_change = 0;
+		wake_up_interruptible(&sd_conn_wait);		
+	}
+
 	return 0;
 
 out_put:
@@ -1637,8 +1648,19 @@ out:
  **/
 static int sd_remove(struct device *dev)
 {
+	int i; 
+	char *dname;
 	struct scsi_disk *sdkp = dev_get_drvdata(dev);
+	dname = sdkp->disk->disk_name;
 
+	if(dname[2] >= 'a' && dname[2] <= 'x') //only 24bits
+	{
+		i = dname[2]-'a';
+		atomic_sub((0x01<<i),&conn_status);
+		no_connection_change = 0;
+		wake_up_interruptible(&sd_conn_wait);		
+	}
+	
 	del_gendisk(sdkp->disk);
 	sd_shutdown(dev);
 	down(&sd_ref_sem);
@@ -1704,6 +1726,8 @@ static int __init init_sd(void)
 {
 	int majors = 0, i;
 
+	atomic_set(&conn_status, 0);
+			
 	SCSI_LOG_HLQUEUE(3, printk("init_sd: sd driver entry point\n"));
 
 	for (i = 0; i < SD_MAJORS; i++)

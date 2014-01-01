@@ -1,18 +1,23 @@
 #
-# Makefile for the Linux Journalling Flash File System v2 (JFFS2)
+# Out of tree fs/jffs2/Makefile
 #
-# $Id: Makefile.common,v 1.7 2004/11/03 12:57:38 jwboyer Exp $
-#
+# $Id: Makefile,v 1.43 2003/10/06 12:54:49 dwmw2 Exp $
 
-obj-$(CONFIG_JFFS2_FS) += jffs2.o
+ifdef OUT_OF_TREE_BUILD
+include $(mtd)/defconfig
 
-jffs2-y	:= compr.o dir.o file.o ioctl.o nodelist.o malloc.o
-jffs2-y	+= read.o nodemgmt.o readinode.o write.o scan.o gc.o
-jffs2-y	+= symlink.o build.o erase.o background.o fs.o writev.o
-jffs2-y	+= super.o
+# This must be first in the include path, so it goes in $(CC) rather
+# then $(EXTRA_CFLAGS)
 
-jffs2-$(CONFIG_JFFS2_FS_NAND)	+= wbuf.o
-jffs2-$(CONFIG_JFFS2_FS_NOR_ECC) += wbuf.o
-jffs2-$(CONFIG_JFFS2_RUBIN)	+= compr_rubin.o
-jffs2-$(CONFIG_JFFS2_RTIME)	+= compr_rtime.o
-jffs2-$(CONFIG_JFFS2_ZLIB)	+= compr_zlib.o
+CC += -I$(mtd)/../../include
+EXTRA_CFLAGS := -g -Werror
+
+ifndef CONFIG_MTD
+EXTRA_CFLAGS += -DMTD_OUT_OF_TREE
+endif
+
+ifdef NONAND
+EXTRA_CFLAGS += -DNONAND
+endif
+endif
+include $(obj)/Makefile.common

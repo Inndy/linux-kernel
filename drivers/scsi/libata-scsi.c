@@ -328,7 +328,18 @@ void ata_to_sense_error(struct ata_queued_cmd *qc, u8 drv_stat)
 
 int ata_scsi_slave_config(struct scsi_device *sdev)
 {
+#if defined (CONFIG_MIPS_7440)
+	if (sdev->type == TYPE_ROM) {
+		/* CD/DVD */
+		sdev->use_12_for_rw = 1;
+		sdev->r12_cnt = 0;
+	}
+	else {
+		sdev->use_10_for_rw = 1;
+	}
+#else
 	sdev->use_10_for_rw = 1;
+#endif
 	sdev->use_10_for_ms = 1;
 
 	blk_queue_max_phys_segments(sdev->request_queue, LIBATA_MAX_PRD);
@@ -630,7 +641,7 @@ static int ata_scsi_qc_complete(struct ata_queued_cmd *qc, u8 drv_stat)
 {
 	struct scsi_cmnd *cmd = qc->scsicmd;
 
-	if (unlikely(drv_stat & (ATA_ERR | ATA_BUSY | ATA_DRQ)))
+    if (unlikely(drv_stat & (ATA_ERR | ATA_BUSY | ATA_DRQ)))
 		ata_to_sense_error(qc, drv_stat);
 	else
 		cmd->result = SAM_STAT_GOOD;
@@ -1325,6 +1336,13 @@ static unsigned int atapi_xlat(struct ata_queued_cmd *qc, u8 *scsicmd)
 	}
 
 	qc->tf.command = ATA_CMD_PACKET;
+
+#if defined(CONFIG_MIPS_BCM7440)
+	/* Force PIO mode for non-DMA reads*/
+	if ((qc->cdb[0] != READ_10) && (qc->cdb[0] != READ_12)) {
+		using_pio = 1;
+	}
+#endif
 
 	/* no data, or PIO data xfer */
 	if (using_pio || nodata) {

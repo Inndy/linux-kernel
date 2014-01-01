@@ -118,6 +118,7 @@ struct ist_info ist_info;
 struct e820map e820;
 
 extern void early_cpu_init(void);
+extern void early_trap_init(void);
 extern void dmi_scan_machine(void);
 extern void generic_apic_probe(char *);
 extern int root_mountflags;
@@ -1401,6 +1402,7 @@ void __init setup_arch(char **cmdline_p)
 	memcpy(&boot_cpu_data, &new_cpu_data, sizeof(new_cpu_data));
 	pre_setup_arch_hook();
 	early_cpu_init();
+	early_trap_init();
 
 	/*
 	 * FIXME: This isn't an official loader_type right
@@ -1457,6 +1459,7 @@ void __init setup_arch(char **cmdline_p)
 	data_resource.end = virt_to_phys(_edata)-1;
 
 	parse_cmdline_early(cmdline_p);
+	parse_early_param();
 
 	max_low_pfn = setup_memory();
 

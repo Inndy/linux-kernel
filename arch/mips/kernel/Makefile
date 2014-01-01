@@ -8,14 +8,15 @@ obj-y		+= cpu-probe.o branch.o entry.o genex.o irq.o process.o \
 		   ptrace.o reset.o semaphore.o setup.o signal.o syscall.o \
 		   time.o traps.o unaligned.o
 
+# gcc 3.4.x reorders code with -Os and -O2, breaking the save_static stuff.
+CFLAGS_syscall.o		:= -O1
+CFLAGS_signal.o			:= -O1
+CFLAGS_signal32.o		:= -O1
+
 binfmt_irix-objs	:= irixelf.o irixinv.o irixioctl.o irixsig.o	\
 			   irix5sys.o sysirix.o
 
-ifdef CONFIG_MODULES
-obj-y				+= mips_ksyms.o module.o
-obj-$(CONFIG_MIPS32)		+= module-elf32.o
-obj-$(CONFIG_MIPS64)		+= module-elf64.o
-endif
+obj-$(CONFIG_MODULES)		+= mips_ksyms.o module.o
 
 obj-$(CONFIG_CPU_R3000)		+= r2300_fpu.o r2300_switch.o
 obj-$(CONFIG_CPU_TX39XX)	+= r2300_fpu.o r2300_switch.o
@@ -32,8 +33,9 @@ obj-$(CONFIG_CPU_RM9000)	+= r4k_fpu.o r4k_switch.o
 obj-$(CONFIG_CPU_NEVADA)	+= r4k_fpu.o r4k_switch.o
 obj-$(CONFIG_CPU_R10000)	+= r4k_fpu.o r4k_switch.o
 obj-$(CONFIG_CPU_SB1)		+= r4k_fpu.o r4k_switch.o
-obj-$(CONFIG_CPU_MIPS32)	+= r4k_fpu.o r4k_switch.o
-obj-$(CONFIG_CPU_MIPS64)	+= r4k_fpu.o r4k_switch.o
+obj-$(CONFIG_CPU_MIPS32_R2)     += r4k_fpu.o r4k_switch.o
+obj-$(CONFIG_CPU_MIPS32_R1)	+= r4k_fpu.o r4k_switch.o
+obj-$(CONFIG_CPU_MIPS64_R1)	+= r4k_fpu.o r4k_switch.o
 obj-$(CONFIG_CPU_R6000)		+= r6000_fpu.o r4k_switch.o
 
 obj-$(CONFIG_SMP)		+= smp.o
@@ -52,7 +54,8 @@ obj-$(CONFIG_MIPS32_COMPAT)	+= ioctl32.o linux32.o signal32.o
 obj-$(CONFIG_MIPS32_N32)	+= binfmt_elfn32.o scall64-n32.o signal_n32.o
 obj-$(CONFIG_MIPS32_O32)	+= binfmt_elfo32.o scall64-o32.o ptrace32.o
 
-obj-$(CONFIG_KGDB)		+= gdb-low.o gdb-stub.o
+obj-$(CONFIG_KGDB)		+= kgdb_handler.o kgdb.o kgdb-jmp.o	\
+					kgdb-setjmp.o
 obj-$(CONFIG_PROC_FS)		+= proc.o
 
 obj-$(CONFIG_MIPS64)		+= cpu-bugs64.o

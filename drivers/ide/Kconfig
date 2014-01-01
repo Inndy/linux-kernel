@@ -95,9 +95,12 @@ if BLK_DEV_IDE
 
 comment "Please see Documentation/ide.txt for help/info on IDE drives"
 
+# tht for now default y on 7038
 config BLK_DEV_IDE_SATA
 	bool "Support for SATA (deprecated; conflicts with libata SATA driver)"
-	default n
+	default y if MIPS_BCM7038 || MIPS_BCM7329 || MIPS_BCM7400 || \
+                     MIPS_BCM7401 || MIPS_BCM7118 || \
+		     MIPS_BCM7440 || MIPS_BCM7403
 	---help---
 	  There are two drivers for Serial ATA controllers.
 
@@ -665,11 +668,17 @@ config PDC202XX_FORCE
 	help
 	  Enable the PDC202xx controller even if it has been disabled in the BIOS setup.
 
+
+# default n if CONFIG_SCSI_SATA_SVW
+	
 config BLK_DEV_SVWKS
-	tristate "ServerWorks OSB4/CSB5/CSB6 chipsets support"
+	tristate "ServerWorks OSB4/CSB5/CSB6/BCM7038 chipsets support"
+	depends on BLK_DEV_IDE_SATA
+	depends on MIPS_BCM7038 || MIPS_BCM7400 || MIPS_BCM7401 || \
+                   MIPS_BCM7118 || MIPS_BCM7440 || MIPS_BCM7403
 	help
 	  This driver adds PIO/(U)DMA support for the ServerWorks OSB4/CSB5
-	  chipsets.
+	  chipsets.  For the BCM97038|7400|7401|7118|7440|7403 STB, the option under SCSI_SATA_SVW is preferred
 
 config BLK_DEV_SGIIOC4
 	tristate "Silicon Graphics IOC4 chipset support"
@@ -736,6 +745,15 @@ config BLK_DEV_VIA82CXXX
 
 endif
 
+config BLK_DEV_IDE_BCM7XXX
+	tristate "Broadcom BCM7XXX onboard IDE support"
+	depends on MIPS_BCM7110 || MIPS_BCM7115 || MIPS_BCM7314 ||MIPS_BCM7315 || MIPS_BCM7317 || MIPS_BCM7318 || MIPS_BCM7320 || MIPS_BCM7440
+	select BLK_DEV_IDEDMA
+	help 
+	  Say Y here for Broadcom STB with PATA interface, 
+	  e.g. 97318, 97440 STBs.
+
+
 config BLK_DEV_IDE_PMAC
 	bool "Builtin PowerMac IDE support"
 	depends on PPC_PMAC && IDE=y
@@ -770,6 +788,10 @@ config BLK_DEV_IDE_PMAC_BLINK
 	help
 	  This option enables the use of the sleep LED as a hard drive
 	  activity LED.
+
+config BLK_DEV_IDE_SWARM
+	bool "IDE for Sibyte evaluation boards"
+	depends on SIBYTE_SB1xxx_SOC
 
 config IDE_ARM
 	def_bool ARM && (ARCH_A5K || ARCH_CLPS7500 || ARCH_RPC || ARCH_SHARK)
@@ -1006,7 +1028,7 @@ config BLK_DEV_UMC8672
 endif
 
 config BLK_DEV_IDEDMA
-	def_bool BLK_DEV_IDEDMA_PCI || BLK_DEV_IDEDMA_PMAC || BLK_DEV_IDEDMA_ICS
+	def_bool BLK_DEV_IDEDMA_PCI || BLK_DEV_IDEDMA_PMAC || BLK_DEV_IDEDMA_ICS || BLK_DEV_IDE_BCM7XXX
 
 config IDEDMA_IVB
 	bool "IGNORE word93 Validation BITS"
@@ -1025,7 +1047,7 @@ config IDEDMA_IVB
 	  It is normally safe to answer Y; however, the default is N.
 
 config IDEDMA_AUTO
-	def_bool IDEDMA_PCI_AUTO || IDEDMA_ICS_AUTO
+	def_bool IDEDMA_PCI_AUTO || IDEDMA_ICS_AUTO || BLK_DEV_IDE_BCM7XXX
 
 endif
 
@@ -1050,6 +1072,12 @@ config BLK_DEV_HD_ONLY
 
 config BLK_DEV_HD
 	def_bool BLK_DEV_HD_IDE || BLK_DEV_HD_ONLY
+
+
+#config BLK_DEV_BRCM_PORT_MULT
+#	def_bool MIPS_BCM7401 && BLK_DEV_SVWKS
+#	bool "Support for Port Multiplier in Command Mode"
+#	default n
 
 endif
 

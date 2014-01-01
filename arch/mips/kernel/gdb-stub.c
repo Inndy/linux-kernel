@@ -141,6 +141,11 @@
 #include <asm/gdb-stub.h>
 #include <asm/inst.h>
 
+#include <asm/debug.h>
+
+
+int kgdb_detached = 1;    /* RYH */
+
 /*
  * external low-level support routines
  */
@@ -176,7 +181,7 @@ int kgdb_enabled;
 /*
  * spin locks for smp case
  */
-static spinlock_t kgdb_lock = SPIN_LOCK_UNLOCKED;
+static DEFINE_SPINLOCK(kgdb_lock);
 static spinlock_t kgdb_cpulock[NR_CPUS] = { [0 ... NR_CPUS-1] = SPIN_LOCK_UNLOCKED};
 
 /*
@@ -184,6 +189,8 @@ static spinlock_t kgdb_cpulock[NR_CPUS] = { [0 ... NR_CPUS-1] = SPIN_LOCK_UNLOCK
  * at least NUMREGBYTES*2 are needed for register packets
  */
 #define BUFMAX 2048
+
+static char message[128];	/* RYH */
 
 static char input_buffer[BUFMAX];
 static char output_buffer[BUFMAX];
@@ -219,7 +226,7 @@ static void getpacket(char *buffer)
 	unsigned char xmitcsum;
 	int i;
 	int count;
-	unsigned char ch;
+	unsigned char ch, c;    /* RYH */
 
 	do {
 		/*
@@ -236,9 +243,13 @@ static void getpacket(char *buffer)
 		 * now, read until a # or end of buffer is found
 		 */
 		while (count < BUFMAX) {
-			ch = getDebugChar();
+			while( !(ch = getDebugChar() & 0x7f) );    /* RYH */
 			if (ch == '#')
 				break;
+#if 0
+		sprintf(message, "getpacket()-> Input Char : %x\n", ch);
+		uart_puts(message);
+#endif
 			checksum = checksum + ch;
 			buffer[count] = ch;
 			count = count + 1;
@@ -250,11 +261,17 @@ static void getpacket(char *buffer)
 		buffer[count] = 0;
 
 		if (ch == '#') {
-			xmitcsum = hex(getDebugChar() & 0x7f) << 4;
-			xmitcsum |= hex(getDebugChar() & 0x7f);
+			while( !(c = getDebugChar() & 0x7f) );    /* RYH */
+			xmitcsum = hex(c) << 4;
+			while( !(c = getDebugChar() & 0x7f) );
+			xmitcsum |= hex(c);
 
-			if (checksum != xmitcsum)
+			/* xmitcsum = hex(getDebugChar() & 0x7f) << 4;
+			xmitcsum |= hex(getDebugChar() & 0x7f); */
+
+			if (checksum != xmitcsum) {
 				putDebugChar('-');	/* failed checksum */
+			}
 			else {
 				putDebugChar('+'); /* successful transfer */
 
@@ -637,15 +654,18 @@ static struct gdb_bp_save async_bp;
  * and only one can be active at a time.
  */
 extern spinlock_t smp_call_lock;
+
 void set_async_breakpoint(unsigned long *epc)
 {
 	/* skip breaking into userland */
 	if ((*epc & 0x80000000) == 0)
 		return;
 
+#ifdef CONFIG_SMP
 	/* avoid deadlock if someone is make IPC */
 	if (spin_is_locked(&smp_call_lock))
 		return;
+#endif
 
 	async_bp.addr = *epc;
 	*epc = (unsigned long)async_breakpoint;
@@ -784,9 +804,12 @@ void handle_exception (struct gdb_regs *regs)
 	/*
 	 * Wait for input from remote GDB
 	 */
+
 	while (1) {
 		output_buffer[0] = 0;
 		getpacket(input_buffer);
+
+// printk("\nhandle_exception: %c\n", input_buffer[0]);   /*RYH */
 
 		switch (input_buffer[0])
 		{
@@ -801,6 +824,7 @@ void handle_exception (struct gdb_regs *regs)
 		 * Detach debugger; let CPU run
 		 */
 		case 'D':
+			kgdb_detached = 1;    /* RYH */
 			putpacket(output_buffer);
 			goto finish_kgdb;
 			break;
@@ -964,6 +988,112 @@ void handle_exception (struct gdb_regs *regs)
 		}
 		break;
 
+		/* query */    /* RYH */
+		case 'q':
+			switch (input_buffer[1]) {
+#if 0
+			case 's':
+			case 'f':
+				if (memcmp
+				    (remcom_in_buffer + 2, "ThreadInfo", 10)) {
+					error_packet(remcom_out_buffer,
+						     -EINVAL);
+					break;
+				}
+				if (remcom_in_buffer[1] == 'f') {
+					threadid = 1;
+				}
+				remcom_out_buffer[0] = 'm';
+				ptr = remcom_out_buffer + 1;
+				for (i = 0; i < 32 && threadid < pid_max +
+				     numshadowth; threadid++) {
+					thread = getthread(linux_regs,
+							   threadid);
+					if (thread) {
+						int_to_threadref(&thref,
+								 threadid);
+						pack_threadid(ptr, &thref);
+						ptr += 16;
+						*(ptr++) = ',';
+						i++;
+					}
+				}
+				*(--ptr) = '\0';
+				break;
+			case 'T':
+				if (memcmp(remcom_in_buffer + 1,
+					   "ThreadExtraInfo,", 16)) {
+					error_packet(remcom_out_buffer,
+						     -EINVAL);
+					break;
+				}
+				threadid = 0;
+				ptr = remcom_in_buffer + 17;
+				kgdb_hex2long(&ptr, &threadid);
+				if (!getthread(linux_regs, threadid)) {
+					error_packet(remcom_out_buffer,
+						     -EINVAL);
+					break;
+				}
+				if (threadid < pid_max) {
+					kgdb_mem2hex(getthread(linux_regs,
+							       threadid)->comm,
+						     remcom_out_buffer, 16);
+				} else if (threadid >= pid_max +
+					   num_online_cpus()) {
+					kgdb_shadowinfo(linux_regs,
+							remcom_out_buffer,
+							threadid - pid_max -
+							num_online_cpus());
+				} else {
+					static char tmpstr[23 + BUF_THREAD_ID_SIZE];
+					sprintf(tmpstr, "Shadow task %d"
+						" for pid 0",
+						(int)(threadid - pid_max));
+					kgdb_mem2hex(tmpstr, remcom_out_buffer,
+						     strlen(tmpstr));
+				}
+				
+#endif
+				break;
+
+			case 'C':
+				/* Current thread id */
+				strcpy(output_buffer, "QC");
+
+				printk("Current PID : %x\n", current->pid);
+
+				{
+					int	i;
+					char *cp = output_buffer+2, c;
+					long pid = current->pid;
+
+					for(i=0; i<4; ++i) {
+						*cp++= hexchars[(0x00>>4)&0xF];
+						*cp++= hexchars[0x00&0xF];
+					}
+					
+					c = (pid>>24) & 0xff;
+					*cp++= hexchars[(c>>4)&0xF];
+					*cp++= hexchars[c&0xF];
+
+					c = (pid>>16) & 0xff;
+					*cp++= hexchars[(c>>4)&0xF];
+					*cp++= hexchars[c&0xF];
+
+					c = (pid>>8) & 0xff;
+					*cp++= hexchars[(c>>4)&0xF];
+					*cp++= hexchars[c&0xF];
+
+					c = pid & 0xff;
+					*cp++= hexchars[(c>>4)&0xF];
+					*cp++= hexchars[c&0xF];
+					*cp++= 0x00;
+				}
+				break;
+			}
+			break;
+
 		}			/* switch */
 
 		/*
@@ -1067,6 +1197,11 @@ void gdb_putsn(const char *str, int l)
 	}
 }
 
+static kdev_t gdb_console_dev(struct console *con)
+{
+	return MKDEV(1, 3); /* /dev/null */
+}
+
 static void gdb_console_write(struct console *con, const char *s, unsigned n)
 {
 	gdb_putsn(s, n);
@@ -1075,6 +1210,7 @@ static void gdb_console_write(struct console *con, const char *s, unsigned n)
 static struct console gdb_console = {
 	.name	= "gdb",
 	.write	= gdb_console_write,
+	.device	= gdb_console_dev,
 	.flags	= CON_PRINTBUFFER,
 	.index	= -1
 };

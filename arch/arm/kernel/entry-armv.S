@@ -15,6 +15,7 @@
  */
 #include <linux/config.h>
 
+#include <asm/kgdb.h>
 #include <asm/glue.h>
 #include <asm/vfpmacros.h>
 #include <asm/hardware.h>		/* should be moved into entry-macro.S */
@@ -176,6 +177,7 @@ svc_preempt:
 	beq	preempt_return			@ go again
 	b	1b
 #endif
+	CFI_END_FRAME(__irq_svc)
 
 	.align	5
 __und_svc:

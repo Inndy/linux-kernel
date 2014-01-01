@@ -2307,6 +2307,18 @@ static inline void __cache_free(kmem_cache_t *cachep, void *objp)
  */
 void *kmem_cache_alloc(kmem_cache_t *cachep, unsigned int __nocast flags)
 {
+
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+        /*
+         * UGLY HACK UGLY HACK UGLY HACK UGLY HACK UGLY HACK UGLY HACK UGLY HACK UGLY HACK
+         * Since flags does not come into play when the cache is not empty, just require
+         * GFP_DMA for all cached pages which have been created with DMA flag
+         */
+
+        if (cachep->gfpflags & GFP_DMA)
+                flags |= SLAB_DMA;
+#endif
+
 	return __cache_alloc(cachep, flags);
 }
 EXPORT_SYMBOL(kmem_cache_alloc);

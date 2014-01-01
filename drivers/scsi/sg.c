@@ -2650,10 +2650,15 @@ sg_page_malloc(int rqSz, int lowDma, int *retSzp)
 	if (rqSz <= 0)
 		return resp;
 
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	page_mask = GFP_ATOMIC | GFP_DMA | __GFP_NOWARN;
+#else
+
 	if (lowDma)
 		page_mask = GFP_ATOMIC | GFP_DMA | __GFP_NOWARN;
 	else
 		page_mask = GFP_ATOMIC | __GFP_NOWARN;
+#endif
 
 	for (order = 0, a_size = PAGE_SIZE; a_size < rqSz;
 	     order++, a_size <<= 1) ;

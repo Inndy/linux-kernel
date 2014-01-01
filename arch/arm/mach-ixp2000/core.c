@@ -35,6 +35,7 @@
 #include <asm/system.h>
 #include <asm/tlbflush.h>
 #include <asm/pgtable.h>
+#include <asm/kgdb.h>
 
 #include <asm/mach/map.h>
 #include <asm/mach/time.h>
@@ -151,6 +152,10 @@ void __init ixp2000_map_io(void)
 
 	iotable_init(ixp2000_io_desc, ARRAY_SIZE(ixp2000_io_desc));
 	early_serial_setup(&ixp2000_serial_port);
+
+#ifdef CONFIG_KGDB_8250
+	kgdb8250_add_port(0, &ixp2000_serial_port);
+#endif
 
 	/* Set slowport to 8-bit mode.  */
 	ixp2000_reg_write(IXP2000_SLOWPORT_FRM, 1);

@@ -6,7 +6,7 @@ comment "USB Host Controller Drivers"
 
 config USB_EHCI_HCD
 	tristate "EHCI HCD (USB 2.0) support"
-	depends on USB && PCI
+	depends on USB && ( PCI || USB_BRCM )
 	---help---
 	  The Enhanced Host Controller Interface (EHCI) is standard for USB 2.0
 	  "high speed" (480 Mbit/sec, 60 Mbyte/sec) host controller hardware.
@@ -123,6 +123,29 @@ config USB_SL811_HCD
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called sl811-hcd.
+
+config USB_BRCM
+	boolean "Broadcom non-PCI USB support"
+	depends on MIPS_BRCM97XXX
+	help
+	  Say yes here for all Broadcom STB with USB host controller.
+
+config USB_BRCM_PWR_CTL
+	boolean "Enable USB power control"
+	depends on USB_BRCM
+	default N
+	help
+	  Say yes here if the kernel should override bootloader's power
+	  control settings.
+
+config USB_BRCM_PWR_LO
+	boolean "Active low USB power enable"
+	depends on USB_BRCM && USB_BRCM_PWR_CTL
+	default N
+	help
+	  Say yes if the board's USB VBUS control IC has an active low 
+	  enable. The output of the hardware signals USBx_PWRON is affected
+	  by this setting.
 
 config USB_SL811_CS
 	tristate "CF/PCMCIA support for SL811HS HCD"

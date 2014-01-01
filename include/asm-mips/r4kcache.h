@@ -452,6 +452,45 @@ static inline void blast_scache32_page_indexed(unsigned long page)
 		: "r" (base),						\
 		  "i" (op));
 
+static inline void blast_dcache64(void)
+{
+	unsigned long start = INDEX_BASE;
+	unsigned long end = start + current_cpu_data.dcache.waysize;
+	unsigned long ws_inc = 1UL << current_cpu_data.dcache.waybit;
+	unsigned long ws_end = current_cpu_data.dcache.ways <<
+	                       current_cpu_data.dcache.waybit;
+	unsigned long ws, addr;
+
+	for (ws = 0; ws < ws_end; ws += ws_inc) 
+		for (addr = start; addr < end; addr += 0x800) 
+			cache64_unroll32(addr|ws,Index_Writeback_Inv_D);
+}
+
+static inline void blast_dcache64_page(unsigned long page)
+{
+	unsigned long start = page;
+	unsigned long end = start + PAGE_SIZE;
+
+	do {
+		cache64_unroll32(start,Hit_Writeback_Inv_D);
+		start += 0x800;
+	} while (start < end);
+}
+
+static inline void blast_dcache64_page_indexed(unsigned long page)
+{
+	unsigned long start = page;
+	unsigned long end = start + PAGE_SIZE;
+	unsigned long ws_inc = 1UL << current_cpu_data.dcache.waybit;
+	unsigned long ws_end = current_cpu_data.dcache.ways <<
+	                       current_cpu_data.dcache.waybit;
+	unsigned long ws, addr;
+
+	for (ws = 0; ws < ws_end; ws += ws_inc)
+		for (addr = start; addr < end; addr += 0x800) 
+			cache64_unroll32(addr|ws,Index_Writeback_Inv_D);
+}
+
 static inline void blast_icache64(void)
 {
 	unsigned long start = INDEX_BASE;

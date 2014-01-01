@@ -77,6 +77,7 @@
 #define  MACH_SGI_IP27		1	/* Origin 200, Origin 2000, Onyx 2 */
 #define  MACH_SGI_IP28		2	/* Indigo2 Impact		*/
 #define  MACH_SGI_IP32		3	/* O2				*/
+#define  MACH_SGI_IP30		4	/* Octane, Octane2              */
 
 /*
  * Valid machtype for group COBALT
@@ -177,6 +178,8 @@
 #define  MACH_MTX1		7       /* 4G MTX-1 Au1500-based board */
 #define  MACH_PB1550		8       /* Au1550-based eval board */
 #define  MACH_DB1550		9       /* Au1550-based eval board */
+#define  MACH_PB1200		10       /* Au1200-based eval board */
+#define  MACH_DB1200		11       /* Au1200-based eval board */
 
 /*
  * Valid machtype for group NEC_VR41XX
@@ -212,6 +215,50 @@
  */
 #define MACH_GROUP_TITAN       22	/* PMC-Sierra Titan		*/
 #define  MACH_TITAN_YOSEMITE	1	/* PMC-Sierra Yosemite		*/
+
+
+#define MACH_GROUP_BRCM        30 /* Broadcom STBs */
+
+/*
+ * Valid machtypes for group Broadcom
+ */
+
+/*
+ * Valid machtypes from group BRCM
+ */
+#define MACH_BRCM_93730 0
+#define MACH_BRCM_6352 1
+#define MACH_BRCM_7110 2
+#define MACH_BRCM_7115 3
+#define MACH_BRCM_3345 4
+#define MACH_BRCM_7320 5
+#define MACH_BRCM_7315 6
+#define MACH_BRCM_7319 7
+#define MACH_BRCM_7112 8
+#define MACH_BRCM_7328 9
+#define MACH_BRCM_7038 10
+#define MACH_BRCM_7317 11
+#define MACH_BRCM_7329 12
+#define MACH_BRCM_7111 13
+#define MACH_BRCM_7312 14
+#define MACH_BRCM_7314 15
+#define MACH_BRCM_7318 16
+#define MACH_BRCM_7327 17
+#define MACH_BRCM_3560 18
+#define MACH_BRCM_7401 19
+#define MACH_BRCM_7400 20
+#define MACH_BRCM_7118 21
+#define MACH_BRCM_7440 22
+#define MACH_BRCM_7403 23
+
+
+
+#define GROUP_BRCM_NAMES { "BCM93730", "BCM6352", "BCM7110", "BCM7115", "BCM3345", \
+	"BCM7320", "BCM7315", "BCM7319", "BCM7112" , "BCM7328", "BCM7038" , "BCM7317", "BCM7329", \
+ 	"BCM7111" , "BCM7312", "BCM7314", "BCM7318", "BCM7327", "BCM3560", "BCM7401", "BCM7400", \
+ 	"BCM7118", "BCM7440", "BCM7403" \
+ 	}
+
 
 #define CL_SIZE			COMMAND_LINE_SIZE
 

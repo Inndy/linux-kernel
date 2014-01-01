@@ -20,7 +20,7 @@
 #include "buffer_sync.h"
 #include "oprofile_stats.h"
  
-struct oprofile_operations oprofile_ops;
+struct oprofile_operations *oprofile_ops;
 
 unsigned long oprofile_started;
 unsigned long backtrace_depth;
@@ -45,7 +45,7 @@ int oprofile_setup(void)
 	if ((err = alloc_event_buffer()))
 		goto out1;
  
-	if (oprofile_ops.setup && (err = oprofile_ops.setup()))
+	if (oprofile_ops->setup && (err = oprofile_ops->setup()))
 		goto out2;
  
 	/* Note even though this starts part of the
@@ -61,8 +61,8 @@ int oprofile_setup(void)
 	return 0;
  
 out3:
-	if (oprofile_ops.shutdown)
-		oprofile_ops.shutdown();
+	if (oprofile_ops->shutdown)
+		oprofile_ops->shutdown();
 out2:
 	free_event_buffer();
 out1:
@@ -90,7 +90,7 @@ int oprofile_start(void)
  
 	oprofile_reset_stats();
 
-	if ((err = oprofile_ops.start()))
+	if ((err = oprofile_ops->start()))
 		goto out;
 
 	oprofile_started = 1;
@@ -106,7 +106,7 @@ void oprofile_stop(void)
 	down(&start_sem);
 	if (!oprofile_started)
 		goto out;
-	oprofile_ops.stop();
+	oprofile_ops->stop();
 	oprofile_started = 0;
 	/* wake up the daemon to read what remains */
 	wake_up_buffer_waiter();
@@ -119,8 +119,8 @@ void oprofile_shutdown(void)
 {
 	down(&start_sem);
 	sync_stop();
-	if (oprofile_ops.shutdown)
-		oprofile_ops.shutdown();
+	if (oprofile_ops->shutdown)
+		oprofile_ops->shutdown();
 	is_setup = 0;
 	free_event_buffer();
 	free_cpu_buffers();
@@ -139,7 +139,7 @@ int oprofile_set_backtrace(unsigned long val)
 		goto out;
 	}
 
-	if (!oprofile_ops.backtrace) {
+	if (!oprofile_ops->backtrace) {
 		err = -EINVAL;
 		goto out;
 	}
@@ -159,7 +159,7 @@ static int __init oprofile_init(void)
 
 	if (err < 0 || timer) {
 		printk(KERN_INFO "oprofile: using timer interrupt.\n");
-		oprofile_timer_init(&oprofile_ops);
+		oprofile_timer_init(oprofile_ops);
 	}
 
 	err = oprofilefs_register();

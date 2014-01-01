@@ -1183,14 +1183,20 @@ static int init_dev(struct tty_driver *driver, int idx,
 	struct termios *tp, **tp_loc, *o_tp, **o_tp_loc;
 	struct termios *ltp, **ltp_loc, *o_ltp, **o_ltp_loc;
 	int retval=0;
-
+	
 	/* check whether we're reopening an existing tty */
+	tty = NULL;
 	if (driver->flags & TTY_DRIVER_DEVPTS_MEM) {
 		tty = devpts_get_tty(idx);
 		if (tty && driver->subtype == PTY_TYPE_MASTER)
 			tty = tty->link;
-	} else {
+	} else if (driver->ttys) {
 		tty = driver->ttys[idx];
+	}
+	else {
+		// Cannot find controlling terminal.  Tell the user
+        	printk(KERN_ERR "Controlling terminal NOT initialized for device %s\n", driver->name);
+		/* Let it crash */
 	}
 	if (tty) goto fast_track;
 
@@ -2534,7 +2540,11 @@ out:
  */
 static int baud_table[] = {
 	0, 50, 75, 110, 134, 150, 200, 300, 600, 1200, 1800, 2400, 4800,
+#ifdef CONFIG_MIPS_BRCM_IKOS
+	9600, 19200, 38400, 57600, 115200, 230400, 375000, // THT Changed from 460800 for Ikos,
+#else
 	9600, 19200, 38400, 57600, 115200, 230400, 460800,
+#endif
 #ifdef __sparc__
 	76800, 153600, 307200, 614400, 921600
 #else

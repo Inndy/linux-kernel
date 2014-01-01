@@ -57,6 +57,10 @@ pcibios_align_resource(void *data, struct resource *res,
 	struct pci_controller *hose = dev->sysdata;
 	unsigned long start = res->start;
 
+#ifdef CONFIG_MIPS_BRCM97XXX
+/* This is very PC-centric */
+	return;
+#else
 	if (res->flags & IORESOURCE_IO) {
 		/* Make sure we start at our min on all hoses */
 		if (start < PCIBIOS_MIN_IO + hose->io_resource->start)
@@ -74,6 +78,7 @@ pcibios_align_resource(void *data, struct resource *res,
 	}
 
 	res->start = start;
+#endif
 }
 
 struct pci_controller * __init alloc_pci_controller(void)

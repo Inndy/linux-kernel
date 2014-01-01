@@ -5,7 +5,7 @@
  *
  * Created by Simon Kagstrom <simonk@axis.com>.
  *
- * $Id: jffs_proc.c,v 1.5 2001/06/02 14:34:55 dwmw2 Exp $
+ * $Id: jffs_proc.c,v 1.7 2005/11/07 11:14:36 gleixner Exp $
  *
  * This is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by
@@ -26,7 +26,7 @@
 #include <linux/jffs.h>
 #include <linux/slab.h>
 #include <linux/proc_fs.h>
-#include <linux/time.h>
+#include <linux/sched.h>
 #include <linux/types.h>
 #include "jffs_fm.h"
 #include "jffs_proc.h"
@@ -51,7 +51,7 @@ struct proc_dir_entry *jffs_proc_root;
  * Linked list of 'jffs_partition_dirs' to help us track
  * the mounted JFFS partitions in the system
  */
-static struct jffs_partition_dir *jffs_part_dirs;
+static struct jffs_partition_dir *jffs_part_dirs = 0;
 
 /*
  * Read functions for entries
@@ -65,39 +65,57 @@ static int jffs_proc_layout_read (char *page, char **start, off_t off,
 /*
  * Register a JFFS partition directory (called upon mount)
  */
-int jffs_register_jffs_proc_dir(int mtd, struct jffs_control *c)
+int jffs_register_jffs_proc_dir(kdev_t dev, struct jffs_control *c)
 {
 	struct jffs_partition_dir *part_dir;
-	struct proc_dir_entry *part_info = NULL;
-	struct proc_dir_entry *part_layout = NULL;
-	struct proc_dir_entry *part_root = NULL;
-	char name[10];
+	struct proc_dir_entry *part_info = 0;
+	struct proc_dir_entry *part_layout = 0;
+	struct proc_dir_entry *part_root = 0;
 
-	sprintf(name, "%d", mtd);
+	/*
+	 * Needs to be allocated at each register since it's freed on unregister
+	 */
+	jffs_proc_root = proc_mkdir("jffs", proc_root_fs);
+
 	/* Allocate structure for local JFFS partition table */
-	part_dir = (struct jffs_partition_dir *)
-		kmalloc(sizeof (struct jffs_partition_dir), GFP_KERNEL);
-	if (!part_dir)
-		goto out;
+	if (!(part_dir = (struct jffs_partition_dir *)
+		kmalloc (sizeof (struct jffs_partition_dir), GFP_KERNEL))) {
+		return -ENOMEM;
+	}
 
 	/* Create entry for this partition */
-	part_root = proc_mkdir(name, jffs_proc_root);
-	if (!part_root)
-		goto out1;
+	if ((part_root = create_proc_entry (kdevname(dev),
+		S_IFDIR | S_IRUGO | S_IXUGO, jffs_proc_root))) {
+		part_root->read_proc = jffs_proc_info_read;
+		part_root->data = (void *) c;
+	}
+	else {
+		kfree (part_dir);
+		return -ENOMEM;
+	}
 
 	/* Create entry for 'info' file */
-	part_info = create_proc_entry ("info", 0, part_root);
-	if (!part_info)
-		goto out2;
-	part_info->read_proc = jffs_proc_info_read;
-	part_info->data = (void *) c;
+	if ((part_info = create_proc_entry ("info", 0, part_root))) {
+		part_info->read_proc = jffs_proc_info_read;
+		part_info->data = (void *) c;
+	}
+	else {
+		remove_proc_entry (part_root->name, jffs_proc_root);
+		kfree (part_dir);
+		return -ENOMEM;
+	}
 
 	/* Create entry for 'layout' file */
-	part_layout = create_proc_entry ("layout", 0, part_root);
-	if (!part_layout)
-		goto out3;
-	part_layout->read_proc = jffs_proc_layout_read;
-	part_layout->data = (void *) c;
+	if ((part_layout = create_proc_entry ("layout", 0, part_root))) {
+		part_layout->read_proc = jffs_proc_layout_read;
+		part_layout->data = (void *) c;
+	}
+	else {
+		remove_proc_entry (part_info->name, part_root);
+		remove_proc_entry (part_root->name, jffs_proc_root);
+		kfree (part_dir);
+		return -ENOMEM;
+	}
 
 	/* Fill in structure for table and insert in the list */
 	part_dir->c = c;
@@ -109,15 +127,6 @@ int jffs_register_jffs_proc_dir(int mtd, struct jffs_control *c)
 
 	/* Return happy */
 	return 0;
-
-out3:
-	remove_proc_entry("info", part_root);
-out2:
-	remove_proc_entry(name, jffs_proc_root);
-out1:
-	kfree(part_dir);
-out:
-	return -ENOMEM;
 }
 
 
@@ -127,7 +136,7 @@ out:
 int jffs_unregister_jffs_proc_dir(struct jffs_control *c)
 {
 	struct jffs_partition_dir *part_dir = jffs_part_dirs;
-	struct jffs_partition_dir *prev_part_dir = NULL;
+	struct jffs_partition_dir *prev_part_dir = 0;
 
 	while (part_dir) {
 		if (part_dir->c == c) {
@@ -151,7 +160,11 @@ int jffs_unregister_jffs_proc_dir(struct jffs_control *c)
 			 * if it is.
 			 */
 			if (jffs_part_dirs == part_dir->next)
+#if LINUX_VERSION_CODE < 0x020300
+				remove_proc_entry ("jffs", &proc_root_fs);
+#else
 				remove_proc_entry ("jffs", proc_root_fs);
+#endif
 
 			/* Free memory for entry */
 			kfree(part_dir);
@@ -209,8 +222,8 @@ static int jffs_proc_layout_read (char *page, char **start, off_t off,
 		int count, int *eof, void *data)
 {
 	struct jffs_control *c = (struct jffs_control *) data;
-	struct jffs_fm *fm = NULL;
-	struct jffs_fm *last_fm = NULL;
+	struct jffs_fm *fm = 0;
+	struct jffs_fm *last_fm = 0;
 	int len = 0;
 
 	/* Get the first item in the list */
@@ -247,7 +260,7 @@ static int jffs_proc_layout_read (char *page, char **start, off_t off,
 	    && (last_fm->offset < c->fmc->flash_size)) {
 		len += sprintf (page + len,
 			       "%08lX %08lX free\n",
-			       (unsigned long) last_fm->offset + 
+			       (unsigned long) last_fm->offset +
 				last_fm->size,
 			       (unsigned long) (c->fmc->flash_size -
 						    (last_fm->offset + last_fm->size)));

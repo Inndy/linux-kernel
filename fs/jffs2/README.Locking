@@ -1,4 +1,4 @@
-	$Id: README.Locking,v 1.9 2004/11/20 10:35:40 dwmw2 Exp $
+	$Id: README.Locking,v 1.12 2005/04/13 13:22:35 dwmw2 Exp $
 
 	JFFS2 LOCKING DOCUMENTATION
 	---------------------------
@@ -108,31 +108,38 @@ in-core jffs2_inode_cache objects (each inode in JFFS2 has the
 correspondent jffs2_inode_cache object). So, the inocache_lock
 has to be locked while walking the c->inocache_list hash buckets.
 
+This spinlock also covers allocation of new inode numbers, which is
+currently just '++->highest_ino++', but might one day get more complicated
+if we need to deal with wrapping after 4 milliard inode numbers are used.
+
 Note, the f->sem guarantees that the correspondent jffs2_inode_cache
 will not be removed. So, it is allowed to access it without locking
 the inocache_lock spinlock. 
 
 Ordering constraints: 
 
-	If both erase_completion_lock and inocache_lock are needed, the
-	c->erase_completion has to be acquired first.
+	c->erase_completion_lock and c->inocache_lock has special ordering:
+	1. c->erase_completion_lock (must be locked first)
+	2. c->inocache_lock
 
 
 	erase_free_sem
 	--------------
 
-This semaphore is only used by the erase code which frees obsolete
+This semaphore is used by the erase code which frees obsolete
 node references and the jffs2_garbage_collect_deletion_dirent()
 function. The latter function on NAND flash must read _obsolete_ nodes
 to determine whether the 'deletion dirent' under consideration can be
 discarded or whether it is still required to show that an inode has
 been unlinked. Because reading from the flash may sleep, the
-erase_completion_lock cannot be held, so an alternative, more
+erase_completion_lock can not be held, so an alternative, more
 heavyweight lock was required to prevent the erase code from freeing
 the jffs2_raw_node_ref structures in question while the garbage
 collection code is looking at them.
 
-Suggestions for alternative solutions to this problem would be welcomed.
+The erase_free_sem mutex is also used in the jffs2_mark_node_obsolete()
+function which manipulates obsolete nodes (which may be removed
+from the list and freed any time) and may sleep (since it reads flash).
 
 
 	wbuf_sem

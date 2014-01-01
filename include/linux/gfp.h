@@ -1,10 +1,16 @@
 #ifndef __LINUX_GFP_H
 #define __LINUX_GFP_H
 
+#include <linux/config.h>
 #include <linux/mmzone.h>
 #include <linux/stddef.h>
 #include <linux/linkage.h>
-#include <linux/config.h>
+
+
+#if defined( CONFIG_MIPS_BRCM97XXX ) && defined ( CONFIG_DISCONTIGMEM )
+// Need this to get proper definition for NODE_DATA
+#include <asm/brcmstb/common/discontig.h>
+#endif
 
 struct vm_area_struct;
 
@@ -81,17 +87,64 @@ struct vm_area_struct;
 static inline void arch_free_page(struct page *page, int order) { }
 #endif
 
+#ifdef CONFIG_DISCONTIGMEM
+extern int numnodes;
+#endif
+
+
 extern struct page *
 FASTCALL(__alloc_pages(unsigned int, unsigned int, struct zonelist *));
 
 static inline struct page *alloc_pages_node(int nid, unsigned int __nocast gfp_mask,
 						unsigned int order)
 {
+#ifdef CONFIG_DISCONTIGMEM
+	struct page *page =  (struct page *)0;
+#endif
+
 	if (unlikely(order >= MAX_ORDER))
 		return NULL;
 
+#ifdef CONFIG_DISCONTIGMEM
+       /*
+        * For Bcm97438 implementation, we know that if gpf_mask requires DMA
+        * we need to use the lower bank so we have no choice, but use NODE 0
+        */
+       if ((numnodes == 1) || (gfp_mask & __GFP_DMA)) {
+/* 
+           printk("alloc_pages_node: trying node 0 GFP_DMA mask 0x%x\n", gfp_mask);
+ */
+           return __alloc_pages(gfp_mask, order,
+                       NODE_DATA(0)->node_zonelists + (gfp_mask & GFP_ZONEMASK));
+       }
+
+       /* try upper memory node first, then lower, but only when memory is really there */
+/* 
+        printk("alloc_pages_node: trying node 1 mask 0x%x\n", gfp_mask);
+*/
+	if (NODE_DATA(1)->node_zonelists != NULL) {
+		struct zonelist* zlist = NODE_DATA(1)->node_zonelists + (gfp_mask & GFP_ZONEMASK);
+		if (zlist->zones[0] != NULL) {
+			
+	       	page = __alloc_pages(gfp_mask, order,
+	                       NODE_DATA(1)->node_zonelists + (gfp_mask & GFP_ZONEMASK));
+		
+		}
+	}
+       if (page == (struct page *)0) {
+/*
+           printk("alloc_pages_node: trying node 0 mask 0x%x\n", gfp_mask);
+*/
+           page = __alloc_pages(gfp_mask, order,
+                       NODE_DATA(0)->node_zonelists + (gfp_mask & GFP_ZONEMASK));
+       }
+       return(page);
+#else
+
 	return __alloc_pages(gfp_mask, order,
 		NODE_DATA(nid)->node_zonelists + (gfp_mask & GFP_ZONEMASK));
+#endif
+
 }
 
 #ifdef CONFIG_NUMA
@@ -108,8 +161,14 @@ alloc_pages(unsigned int __nocast gfp_mask, unsigned int order)
 extern struct page *alloc_page_vma(unsigned __nocast gfp_mask,
 			struct vm_area_struct *vma, unsigned long addr);
 #else
+#if defined (CONFIG_MIPS_BCM7440)
 #define alloc_pages(gfp_mask, order) \
-		alloc_pages_node(numa_node_id(), gfp_mask, order)
+			alloc_pages_node(0, gfp_mask, order)
+#else
+#define alloc_pages(gfp_mask, order) \
+			alloc_pages_node(numa_node_id(), gfp_mask, order)
+#endif
+
 #define alloc_page_vma(gfp_mask, vma, addr) alloc_pages(gfp_mask, 0)
 #endif
 #define alloc_page(gfp_mask) alloc_pages(gfp_mask, 0)

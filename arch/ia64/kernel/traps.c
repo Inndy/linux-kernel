@@ -15,6 +15,7 @@
 #include <linux/vt_kern.h>		/* For unblank_screen() */
 #include <linux/module.h>       /* for EXPORT_SYMBOL */
 #include <linux/hardirq.h>
+#include <linux/kgdb.h>
 
 #include <asm/fpswa.h>
 #include <asm/ia32.h>
@@ -92,6 +93,10 @@ die (const char *str, struct pt_regs *regs, long err)
   	} else
 		printk(KERN_ERR "Recursive die() failure, output suppressed\n");
 
+#ifdef CONFIG_KGDB
+	kgdb_handle_exception(1, SIGTRAP, err, regs);
+#endif
+
 	bust_spinlocks(0);
 	die.lock_owner = -1;
 	spin_unlock_irq(&die.lock);
@@ -137,7 +142,9 @@ ia64_bad_break (unsigned long break_num, struct pt_regs *regs)
 
 	switch (break_num) {
 	      case 0: /* unknown error (used by GCC for __builtin_abort()) */
+#ifndef CONFIG_KGDB
 		die_if_kernel("bugcheck!", regs, break_num);
+#endif
 		sig = SIGILL; code = ILL_ILLOPC;
 		break;
 
@@ -190,8 +197,10 @@ ia64_bad_break (unsigned long break_num, struct pt_regs *regs)
 		break;
 
 	      default:
+#ifndef	CONFIG_KGDB
 		if (break_num < 0x40000 || break_num > 0x100000)
 			die_if_kernel("Bad break", regs, break_num);
+#endif
 
 		if (break_num < 0x80000) {
 			sig = SIGILL; code = __ILL_BREAK;
@@ -199,6 +208,15 @@ ia64_bad_break (unsigned long break_num, struct pt_regs *regs)
 			sig = SIGTRAP; code = TRAP_BRKPT;
 		}
 	}
+#ifdef	CONFIG_KGDB
+	/*
+	 * We don't want to trap simulator system calls.
+	 */
+	if (break_num != 0x80001) {
+		kgdb_handle_exception(11, sig, break_num, regs);
+		return;
+	}
+#endif
 	siginfo.si_signo = sig;
 	siginfo.si_errno = 0;
 	siginfo.si_code = code;
@@ -514,10 +532,21 @@ ia64_fault (unsigned long vector, unsigned long isr, unsigned long ifa,
 		}
 		sprintf(buf, "Unsupported data reference");
 		break;
-
 	      case 29: /* Debug */
-	      case 35: /* Taken Branch Trap */
 	      case 36: /* Single Step Trap */
+#ifdef CONFIG_KGDB
+		if (vector == 36 && !user_mode(&regs) &&
+			kgdb_hwbreak_sstep[smp_processor_id()]) {
+			kgdb_hwbreak_sstep[smp_processor_id()] = 0;
+			regs.cr_ipsr &= ~IA64_PSR_SS;
+			return;
+		} else if (!user_mode(&regs)) {
+			kgdb_handle_exception(vector, SIGTRAP, isr, &regs);
+			return;
+		}
+#endif
+		/* Fall */
+	      case 35: /* Taken Branch Trap */
 		if (fsys_mode(current, &regs)) {
 			extern char __kernel_syscall_via_break[];
 			/*
@@ -631,6 +660,9 @@ ia64_fault (unsigned long vector, unsigned long isr, unsigned long ifa,
 		sprintf(buf, "Fault %lu", vector);
 		break;
 	}
+#ifdef CONFIG_KGDB
+	kgdb_handle_exception(vector, SIGTRAP, isr, &regs);
+#endif
 	die_if_kernel(buf, &regs, error);
 	force_sig(SIGILL, current);
 }

@@ -150,7 +150,7 @@ scsi_mod-y			+= scsi.o hosts.o scsi_ioctl.o constants.o \
 scsi_mod-$(CONFIG_SYSCTL)	+= scsi_sysctl.o
 scsi_mod-$(CONFIG_SCSI_PROC_FS)	+= scsi_proc.o
 
-sd_mod-objs	:= sd.o
+sd_mod-objs	:= sd.o sd_conn.o
 sr_mod-objs	:= sr.o sr_ioctl.o sr_vendor.o
 ncr53c8xx-flags-$(CONFIG_SCSI_ZALON) \
 		:= -DCONFIG_NCR53C8XX_PREFETCH -DSCSI_NCR_BIG_ENDIAN \

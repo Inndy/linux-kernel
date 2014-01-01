@@ -57,6 +57,14 @@
 #include <asm/uaccess.h>
 #include <asm/io.h>
 
+#ifdef CONFIG_BLK_DEV_IDE_BCM7XXX
+#include "legacy/bcm71xx_ide.h"
+#endif
+
+#ifdef CONFIG_BLK_DEV_BRCM_PORT_MULT
+#include "bcmpm.h"
+#endif
+
 /**
  *	generic_id		-	add a generic drive id
  *	@drive:	drive to make an ID block for
@@ -463,6 +471,10 @@ static int do_probe (ide_drive_t *drive, u8 cmd)
 	int rc;
 	ide_hwif_t *hwif = HWIF(drive);
 
+	
+	u8 b8;
+
+
 	if (drive->present) {
 		/* avoid waiting for inappropriate probes */
 		if ((drive->media != ide_disk) && (cmd == WIN_IDENTIFY))
@@ -480,7 +492,13 @@ static int do_probe (ide_drive_t *drive, u8 cmd)
 	msleep(50);
 	SELECT_DRIVE(drive);
 	msleep(50);
-	if (hwif->INB(IDE_SELECT_REG) != drive->select.all && !drive->present) {
+
+	/* THT 10/27/06: Here we test to see if the reg agrees with the drive selection.  
+	 * in the case of the PM, we will have to fake it.  -- TBD
+	 */
+#ifndef CONFIG_BLK_DEV_BRCM_PORT_MULT
+	if ((b8=hwif->INB(IDE_SELECT_REG)) != drive->select.all && !drive->present) 
+	{
 		if (drive->select.b.unit != 0) {
 			/* exit with drive0 selected */
 			SELECT_DRIVE(&hwif->drives[0]);
@@ -490,6 +508,67 @@ static int do_probe (ide_drive_t *drive, u8 cmd)
 		/* no i/f present: mmm.. this should be a 4 -ml */
 		return 3;
 	}
+#else
+	if (0 == bcmpm_detect_pm(hwif)) {
+		/* Port multiplier only/always address drive A, so test it only when the PM is not present */
+		if ((b8=hwif->INB(IDE_SELECT_REG)) != drive->select.all && !drive->present) 
+		{
+			if (drive->select.b.unit != 0) {
+				/* exit with drive0 selected */
+				SELECT_DRIVE(&hwif->drives[0]);
+				/* allow BUSY_STAT to assert & clear */
+				msleep(50);
+			}
+			/* no i/f present: mmm.. this should be a 4 -ml */
+			return 3;
+		}
+	}
+#endif
+	
+
+#ifdef CONFIG_BLK_DEV_SVWKS 
+	/* 
+	  * tht & chansine: Reset the drive, give enough wait time between cmds.
+	  * This happens on autoboot from CFE, as the SATA drives randomly fail the ID.
+	  */
+	{
+
+		unsigned long timeout = jiffies + WAIT_WORSTCASE;
+		byte stat;
+		static int driveHasBeenReset[2] = {0,0};
+
+#ifndef CONFIG_BLK_DEV_BRCM_PORT_MULT
+		if (hwif->index >= 0 && hwif->index < 2 &&
+		     driveHasBeenReset[hwif->index] == 0) {
+
+			driveHasBeenReset[hwif->index] = 1;
+#else
+		/* There can be 2+ drives on a PM */
+		int numDrivesPerHwif;
+
+		if (bcmpm_detect_pm(hwif))
+			numDrivesPerHwif = 2;
+		else
+			numDrivesPerHwif = 1;
+		
+		if (hwif->index >= 0 && hwif->index < 2 &&
+		     driveHasBeenReset[hwif->index] <= numDrivesPerHwif) {
+		     	(driveHasBeenReset[hwif->index])++;
+#endif 	
+			
+			printk("%s: reset\n", hwif->name);
+			hwif->OUTB(12, hwif->io_ports[IDE_CONTROL_OFFSET]);
+			udelay(1000); // tht & Chansine 12/2/03 from 10
+			hwif->OUTB(8, hwif->io_ports[IDE_CONTROL_OFFSET]);
+			do {
+				msleep(50);
+				stat = hwif->INB(hwif->io_ports[IDE_STATUS_OFFSET]);
+			} while ((stat & BUSY_STAT) && 0 < (signed long)(timeout - jiffies));
+		}
+	}
+	/* End of Hack */
+#endif
+
 
 	if (OK_STAT((hwif->INB(IDE_STATUS_REG)), READY_STAT, BUSY_STAT) ||
 	    drive->present || cmd == WIN_PIDENTIFY) {
@@ -595,7 +674,8 @@ static inline u8 probe_for_drive (ide_drive_t *drive)
 	 *
 	 *	Also note that 0 everywhere means "can't do X"
 	 */
- 
+
+	
 	drive->id = kmalloc(SECTOR_WORDS *4, GFP_KERNEL);
 	drive->id_read = 0;
 	if(drive->id == NULL)
@@ -757,13 +837,21 @@ static void probe_hwif(ide_hwif_t *hwif)
 	unsigned int unit;
 	unsigned long flags;
 	unsigned int irqd;
+	int rc;
 
-	if (hwif->noprobe)
+#ifdef CONFIG_BLK_DEV_BRCM_PORT_MULT
+	int cnt;
+#endif
+
+
+	if (hwif->noprobe) {
 		return;
+	}
 
 	if ((hwif->chipset != ide_4drives || !hwif->mate || !hwif->mate->present) &&
-	    (ide_hwif_request_regions(hwif))) {
-		u16 msgout = 0;
+	    (rc=ide_hwif_request_regions(hwif))) {
+	  	u16 msgout = 0;
+
 		for (unit = 0; unit < MAX_DRIVES; ++unit) {
 			ide_drive_t *drive = &hwif->drives[unit];
 			if (drive->present) {
@@ -778,6 +866,7 @@ static void probe_hwif(ide_hwif_t *hwif)
 				hwif->name);
 		return;	
 	}
+
 
 	/*
 	 * We must always disable IRQ, as probe_for_drive will assert IRQ, but
@@ -811,14 +900,22 @@ static void probe_hwif(ide_hwif_t *hwif)
 	if (wait_hwif_ready(hwif) == -EBUSY)
 		printk(KERN_DEBUG "%s: Wait for ready failed before probe !\n", hwif->name);
 
+
+
 	/*
 	 * Second drive should only exist if first drive was found,
 	 * but a lot of cdrom drives are configured as single slaves.
 	 */
 	for (unit = 0; unit < MAX_DRIVES; ++unit) {
 		ide_drive_t *drive = &hwif->drives[unit];
+
 		drive->dn = (hwif->channel ? 2 : 0) + unit;
 		(void) probe_for_drive(drive);
+
+	    /* jli@broadcom- drive 1, if present, is more reliable on 80c cable detection */
+	    if (drive->present && (drive->id->hw_config & 0x2000))
+		    hwif->udma_four = 1;
+
 		if (drive->present && !hwif->present) {
 			hwif->present = 1;
 			if (hwif->chipset != ide_4drives ||
@@ -1272,6 +1369,13 @@ void ide_init_disk(struct gendisk *disk, ide_drive_t *drive)
 	ide_hwif_t *hwif = drive->hwif;
 	unsigned int unit = (drive->select.all >> 4) & 1;
 
+#ifdef CONFIG_BLK_DEV_BRCM_PORT_MULT
+	if (bcmpm_detect_pm(hwif)) {
+		if (drive->dn == 1) {
+			unit = drive->dn;
+		}
+	}
+#endif
 	disk->major = hwif->major;
 	disk->first_minor = unit << PARTN_BITS;
 	sprintf(disk->disk_name, "hd%c", 'a' + hwif->index * MAX_DRIVES + unit);

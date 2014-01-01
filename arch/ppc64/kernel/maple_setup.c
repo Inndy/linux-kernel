@@ -77,6 +77,7 @@ extern void maple_pcibios_fixup(void);
 extern int maple_pci_get_legacy_ide_irq(struct pci_dev *dev, int channel);
 extern void generic_find_legacy_serial_ports(u64 *physport,
 		unsigned int *default_speed);
+extern void add_kgdb_port(void);
 
 
 static void maple_restart(char *cmd)
@@ -150,6 +151,10 @@ static void __init maple_init_early(void)
 		ppc_md.udbg_getc_poll = udbg_getc_poll;
 		DBG("Hello World !\n");
 	}
+
+#ifdef CONFIG_KGDB_8250
+	add_kgdb_port();
+#endif
 
 	/* Setup interrupt mapping options */
 	ppc64_interrupt_controller = IC_OPEN_PIC;

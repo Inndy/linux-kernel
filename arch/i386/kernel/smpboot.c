@@ -461,6 +461,9 @@ void __init initialize_secondary(void)
 
 	asm volatile(
 		"movl %0,%%esp\n\t"
+#ifdef CONFIG_KGDB
+		"pushl end_of_stack_stop_unwind_function\n\t"
+#endif
 		"jmp *%1"
 		:
 		:"r" (current->thread.esp),"r" (current->thread.eip));

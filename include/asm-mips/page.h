@@ -35,6 +35,11 @@
 #define PAGE_SIZE	(1UL << PAGE_SHIFT)
 #define PAGE_MASK       (~((1 << PAGE_SHIFT) - 1))
 
+#ifdef CONFIG_MIPS_BRCM97XXX
+// Used in PCI space pfn calculations where signed bit is iset
+#define PAGE_SHIFT_MASK (((unsigned long) PAGE_MASK) >> PAGE_SHIFT)
+
+#endif
 
 #ifdef __KERNEL__
 #ifndef __ASSEMBLY__
@@ -76,7 +81,7 @@ static inline void copy_user_page(void *vto, void *vfrom, unsigned long vaddr,
  * These are used to make use of C type-checking..
  */
 #ifdef CONFIG_64BIT_PHYS_ADDR
-  #ifdef CONFIG_CPU_MIPS32
+  #ifdef CONFIG_CPU_MIPS32_R1
     typedef struct { unsigned long pte_low, pte_high; } pte_t;
     #define pte_val(x)    ((x).pte_low | ((unsigned long long)(x).pte_high << 32))
   #else
@@ -87,21 +92,48 @@ static inline void copy_user_page(void *vto, void *vfrom, unsigned long vaddr,
 typedef struct { unsigned long pte; } pte_t;
 #define pte_val(x)	((x).pte)
 #endif
+#define __pte(x)	((pte_t) { (x) } )
+
+/*
+ * For 3-level pagetables we defines these ourselves, for 2-level the
+ * definitions are supplied by <asm-generic/pgtable-nopmd.h>.
+ */
+#ifdef CONFIG_MIPS64
 
 typedef struct { unsigned long pmd; } pmd_t;
-typedef struct { unsigned long pgd; } pgd_t;
-typedef struct { unsigned long pgprot; } pgprot_t;
-
 #define pmd_val(x)	((x).pmd)
-#define pgd_val(x)	((x).pgd)
-#define pgprot_val(x)	((x).pgprot)
+#define __pmd(x)	((pmd_t) { (x) } )
 
+#endif
+
+/*
+ * Right now we don't support 4-level pagetables, so all pud-related
+ * definitions come from <asm-generic/pgtable-nopud.h>.
+ */
+
+/*
+ * Finall the top of the hierarchy, the pgd
+ */
+typedef struct { unsigned long pgd; } pgd_t;
+#define pgd_val(x)	((x).pgd)
+#define __pgd(x)	((pgd_t) { (x) } )
+
+/*
+ * Manipulate page protection bits
+ */
+typedef struct { unsigned long pgprot; } pgprot_t;
+#define pgprot_val(x)	((x).pgprot)
+#define __pgprot(x)	((pgprot_t) { (x) } )
+
+/*
+ * On R4000-style MMUs where a TLB entry is mapping a adjacent even / odd
+ * pair of pages we only have a single global bit per pair of pages.  When
+ * writing to the TLB make sure we always have the bit set for both pages
+ * or none.  This macro is used to access the `buddy' of the pte we're just
+ * working on.
+ */
 #define ptep_buddy(x)	((pte_t *)((unsigned long)(x) ^ sizeof(pte_t)))
 
-#define __pte(x)	((pte_t) { (x) } )
-#define __pmd(x)	((pmd_t) { (x) } )
-#define __pgd(x)	((pgd_t) { (x) } )
-#define __pgprot(x)	((pgprot_t) { (x) } )
 
 /* Pure 2^n version of get_order */
 static __inline__ int get_order(unsigned long size)
@@ -117,24 +149,89 @@ static __inline__ int get_order(unsigned long size)
 	return order;
 }
 
+#ifndef CONFIG_DISCONTIGMEM
+#ifdef CONFIG_MIPS_BRCM97XXX
+
+static __inline__ unsigned long __pa(unsigned long x)
+{
+  #if defined( CONFIG_MIPS_BCM7038A0 )
+	if (((((unsigned long) (x)) >= 0xd0000000) && (((unsigned long) (x)) <= 0xe060000b)))
+  #elif defined( CONFIG_MIPS_BCM7038B0 ) || defined( CONFIG_MIPS_BCM7038C0 ) \
+	|| defined( CONFIG_MIPS_BCM7118 )
+	if (((((unsigned long) (x)) >= 0xd0000000) && (((unsigned long) (x)) <= 0xf060000b)))
+
+  #elif defined( CONFIG_MIPS_BCM3560 ) || defined( CONFIG_MIPS_BCM7401 ) \
+     || defined( CONFIG_MIPS_BCM7402 ) || defined( CONFIG_MIPS_BCM7403 ) \
+     || defined( CONFIG_MIPS_BCM7452 )
+
+    /* 
+     * 0xff40_0000-0xff4f_ffff on 3560 & 7401 contains the (non-cacheable) core registers space
+     * (RAC is on it)
+     */
+  	if (((((unsigned long) (x)) >= 0xd0000000) && (((unsigned long) (x)) <= 0xf060000b)) ||
+		(((unsigned long) (x)) >= 0xff400000))
+  #else
+	if (((unsigned long) (x)) >= 0xffe00000)
+  #endif		
+    	return ((unsigned long) (x));
+	else
+		return (((unsigned long) (x)) - PAGE_OFFSET);
+}
+
+static __inline__ void* __va(unsigned long x)
+{
+  #if defined( CONFIG_MIPS_BCM7038A0 )
+	if ((( (x) >= 0xd0000000) && ( (x) <= 0xe060000b)))
+  #elif defined( CONFIG_MIPS_BCM7038B0 ) || defined( CONFIG_MIPS_BCM7038C0 ) \
+	|| defined( CONFIG_MIPS_BCM7118 )	
+	if ((( (x) >= 0xd0000000) && ( (x) <= 0xf060000b)))
+		
+  #elif defined( CONFIG_MIPS_BCM3560 ) || defined( CONFIG_MIPS_BCM7401 ) \
+     || defined( CONFIG_MIPS_BCM7402 ) || defined( CONFIG_MIPS_BCM7403 ) \
+     || defined( CONFIG_MIPS_BCM7452 )
+  	if (((((unsigned long) (x)) >= 0xd0000000) && (((unsigned long) (x)) <= 0xf060000b)) ||
+		(((unsigned long) (x)) >= 0xff400000))
+  #else
+	if ( (x) >= 0xffe00000)
+  #endif		
+    	return ((void *) (x));
+	else
+		return ((void *)( (x) + PAGE_OFFSET));
+}
+
+#define virt_to_page(kaddr)		pfn_to_page((__pa((unsigned long) kaddr) >> PAGE_SHIFT) & 0x000fffff)
+#define virt_addr_valid(kaddr)	pfn_valid((__pa((unsigned long) kaddr) >> PAGE_SHIFT) & 0x000fffff)
+
+#else /* Non Broadcom STB codes */
+#define __pa(x)			(((unsigned long) (x)) - PAGE_OFFSET)
+#define __va(x)			((void *)(((unsigned long) (x)) + PAGE_OFFSET))
+
+#define virt_to_page(kaddr)		pfn_to_page(__pa(kaddr) >> PAGE_SHIFT)
+#define virt_addr_valid(kaddr)	pfn_valid(__pa(kaddr) >> PAGE_SHIFT)
+#endif
+
+#else  /* CONFIG_DISCONTIGMEM */
+
+#include <asm/brcmstb/common/discontig.h>
+
+
+#endif
+
+
 #endif /* !__ASSEMBLY__ */
 
 /* to align the pointer to the (next) page boundary */
 #define PAGE_ALIGN(addr)	(((addr) + PAGE_SIZE - 1) & PAGE_MASK)
 
-#define __pa(x)			((unsigned long) (x) - PAGE_OFFSET)
-#define __va(x)			((void *)((unsigned long) (x) + PAGE_OFFSET))
-
-#define pfn_to_kaddr(pfn)	__va((pfn) << PAGE_SHIFT)
 
 #ifndef CONFIG_DISCONTIGMEM
+#define pfn_to_kaddr(pfn)	__va((pfn) << PAGE_SHIFT)
 #define pfn_to_page(pfn)	(mem_map + (pfn))
 #define page_to_pfn(page)	((unsigned long)((page) - mem_map))
 #define pfn_valid(pfn)		((pfn) < max_mapnr)
 #endif
 
-#define virt_to_page(kaddr)	pfn_to_page(__pa(kaddr) >> PAGE_SHIFT)
-#define virt_addr_valid(kaddr)	pfn_valid(__pa(kaddr) >> PAGE_SHIFT)
+
 
 #define VM_DATA_DEFAULT_FLAGS	(VM_READ | VM_WRITE | VM_EXEC | \
 				 VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC)

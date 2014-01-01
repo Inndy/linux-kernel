@@ -95,9 +95,9 @@ static void __init reserve_bootmem_core(bootmem_data_t *bdata, unsigned long add
 
 	for (i = sidx; i < eidx; i++)
 		if (test_and_set_bit(i, bdata->node_bootmem_map)) {
-#ifdef CONFIG_DEBUG_BOOTMEM
-			printk("hm, page %08lx reserved twice.\n", i*PAGE_SIZE);
-#endif
+//#ifdef CONFIG_DEBUG_BOOTMEM
+            printk("%s: Page 0x%08lx RESERVED TWICE.\n", __FUNCTION__, i*PAGE_SIZE);
+//#endif
 		}
 }
 
@@ -126,7 +126,7 @@ static void __init free_bootmem_core(bootmem_data_t *bdata, unsigned long addr, 
 	sidx = start - (bdata->node_boot_start/PAGE_SIZE);
 
 	for (i = sidx; i < eidx; i++) {
-		if (unlikely(!test_and_clear_bit(i, bdata->node_bootmem_map)))
+        if (unlikely(!test_and_clear_bit(i, bdata->node_bootmem_map)))
 			BUG();
 	}
 }
@@ -267,12 +267,13 @@ static unsigned long __init free_all_bootmem_core(pg_data_t *pgdat)
 	count = 0;
 	/* first extant page of the node */
 	page = virt_to_page(phys_to_virt(bdata->node_boot_start));
-	idx = bdata->node_low_pfn - (bdata->node_boot_start >> PAGE_SHIFT);
-	map = bdata->node_bootmem_map;
+	idx  = bdata->node_low_pfn - (bdata->node_boot_start >> PAGE_SHIFT);
+	map  = bdata->node_bootmem_map;
 	/* Check physaddr is O(LOG2(BITS_PER_LONG)) page aligned */
 	if (bdata->node_boot_start == 0 ||
 	    ffs(bdata->node_boot_start) - PAGE_SHIFT > ffs(BITS_PER_LONG))
 		gofast = 1;
+
 	for (i = 0; i < idx; ) {
 		unsigned long v = ~map[i / BITS_PER_LONG];
 		if (gofast && v == ~0UL) {
@@ -311,6 +312,8 @@ static unsigned long __init free_all_bootmem_core(pg_data_t *pgdat)
 	 * Now free the allocator bitmap itself, it's not
 	 * needed anymore:
 	 */
+	printk("%s: Free allocator bitmap\n", __FUNCTION__);
+
 	page = virt_to_page(bdata->node_bootmem_map);
 	count = 0;
 	for (i = 0; i < ((bdata->node_low_pfn-(bdata->node_boot_start >> PAGE_SHIFT))/8 + PAGE_SIZE-1)/PAGE_SIZE; i++,page++) {

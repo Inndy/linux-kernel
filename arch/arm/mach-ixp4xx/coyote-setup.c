@@ -93,9 +93,12 @@ static void __init coyote_init(void)
 		coyote_uart_data.irq = IRQ_IXP4XX_UART1;
 	}
 
-
 	ixp4xx_sys_init();
 	platform_add_devices(coyote_devices, ARRAY_SIZE(coyote_devices));
+
+#ifdef CONFIG_KGDB_8250
+	kgdb8250_add_port(0, &coyote_serial_port);
+#endif
 }
 
 #ifdef CONFIG_ARCH_ADI_COYOTE

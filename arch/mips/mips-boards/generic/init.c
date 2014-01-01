@@ -1,6 +1,8 @@
 /*
- * Carsten Langgaard, carstenl@mips.com
- * Copyright (C) 1999,2000 MIPS Technologies, Inc.  All rights reserved.
+ * Copyright (C) 1999, 2000, 2004, 2005  MIPS Technologies, Inc.
+ *	All rights reserved.
+ *	Authors: Carsten Langgaard <carstenl@mips.com>
+ *		 Maciej W. Rozycki <macro@mips.com>
  *
  *  This program is free software; you can distribute it and/or modify it
  *  under the terms of the GNU General Public License (Version 2) as
@@ -22,27 +24,17 @@
 #include <linux/string.h>
 #include <linux/kernel.h>
 
-#include <asm/io.h>
 #include <asm/bootinfo.h>
+#include <asm/gt64120.h>
+#include <asm/io.h>
+#include <asm/system.h>
+
 #include <asm/mips-boards/prom.h>
 #include <asm/mips-boards/generic.h>
-#ifdef CONFIG_MIPS_GT64120
-#include <asm/gt64120.h>
-#endif
-#include <asm/mips-boards/msc01_pci.h>
 #include <asm/mips-boards/bonito64.h>
-#ifdef CONFIG_MIPS_MALTA
-#include <asm/mips-boards/malta.h>
-#endif
+#include <asm/mips-boards/msc01_pci.h>
 
-#ifdef CONFIG_KGDB
-extern int rs_kgdb_hook(int, int);
-extern int rs_putDebugChar(char);
-extern char rs_getDebugChar(void);
-extern int saa9730_kgdb_hook(int);
-extern int saa9730_putDebugChar(char);
-extern char saa9730_getDebugChar(void);
-#endif
+#include <asm/mips-boards/malta.h>
 
 int prom_argc;
 int *_prom_argv, *_prom_envp;
@@ -170,61 +162,10 @@ static void __init console_config(void)
 }
 #endif
 
-#ifdef CONFIG_KGDB
-void __init kgdb_config (void)
-{
-	extern int (*generic_putDebugChar)(char);
-	extern char (*generic_getDebugChar)(void);
-	char *argptr;
-	int line, speed;
-
-	argptr = prom_getcmdline();
-	if ((argptr = strstr(argptr, "kgdb=ttyS")) != NULL) {
-		argptr += strlen("kgdb=ttyS");
-		if (*argptr != '0' && *argptr != '1')
-			printk("KGDB: Unknown serial line /dev/ttyS%c, "
-			       "falling back to /dev/ttyS1\n", *argptr);
-		line = *argptr == '0' ? 0 : 1;
-		printk("KGDB: Using serial line /dev/ttyS%d for session\n", line);
-
-		speed = 0;
-		if (*++argptr == ',')
-		{
-			int c;
-			while ((c = *++argptr) && ('0' <= c && c <= '9'))
-				speed = speed * 10 + c - '0';
-		}
-#ifdef CONFIG_MIPS_ATLAS
-		if (line == 1) {
-			speed = saa9730_kgdb_hook(speed);
-			generic_putDebugChar = saa9730_putDebugChar;
-			generic_getDebugChar = saa9730_getDebugChar;
-		}
-		else 
-#endif
-		{
-			speed = rs_kgdb_hook(line, speed);
-			generic_putDebugChar = rs_putDebugChar;
-			generic_getDebugChar = rs_getDebugChar;
-		}
-
-		prom_printf("KGDB: Using serial line /dev/ttyS%d at %d for session, "
-			    "please connect your debugger\n", line ? 1 : 0, speed);
-
-		{
-			char *s;
-			for (s = "Please connect GDB to this port\r\n"; *s; )
-				generic_putDebugChar (*s++);
-		}
-
-		kgdb_enabled = 1;
-		/* Breakpoint is invoked after interrupts are initialised */
-	}
-}
-#endif
-
 void __init prom_init(void)
 {
+	u32 start, map, mask, data;
+
 	prom_argc = fw_arg0;
 	_prom_argv = (int *) fw_arg1;
 	_prom_envp = (int *) fw_arg2;
@@ -266,12 +207,15 @@ void __init prom_init(void)
 #else
 		GT_WRITE(GT_PCI0_CMD_OFS, 0);
 #endif
+		/* Fix up PCI I/O mapping if necessary (for Atlas).  */
+		start = GT_READ(GT_PCI0IOLD_OFS);
+		map = GT_READ(GT_PCI0IOREMAP_OFS);
+		if ((start & map) != 0) {
+			map &= ~start;
+			GT_WRITE(GT_PCI0IOREMAP_OFS, map);
+		}
 
-#ifdef CONFIG_MIPS_MALTA
 		set_io_port_base(MALTA_GT_PORT_BASE);
-#else
-		set_io_port_base((unsigned long)ioremap(0, 0x20000000));
-#endif
 		break;
 
 	case MIPS_REVISION_CORID_CORE_EMUL_BON:
@@ -300,11 +244,7 @@ void __init prom_init(void)
 			BONITO_BONGENCFG_BYTESWAP;
 #endif
 
-#ifdef CONFIG_MIPS_MALTA
 		set_io_port_base(MALTA_BONITO_PORT_BASE);
-#else
-		set_io_port_base((unsigned long)ioremap(0, 0x20000000));
-#endif
 		break;
 
 	case MIPS_REVISION_CORID_CORE_MSC:
@@ -312,6 +252,12 @@ void __init prom_init(void)
 	case MIPS_REVISION_CORID_CORE_EMUL_MSC:
 		_pcictrl_msc = (unsigned long)ioremap(MIPS_MSC01_PCI_REG_BASE, 0x2000); 
 
+		mb();
+		MSC_READ(MSC01_PCI_CFG, data);
+		MSC_WRITE(MSC01_PCI_CFG, data & ~MSC01_PCI_CFG_EN_BIT);
+		wmb();
+
+		/* Fix up lane swapping.  */
 #ifdef CONFIG_CPU_LITTLE_ENDIAN
 		MSC_WRITE(MSC01_PCI_SWAP, MSC01_PCI_SWAP_NOSWAP);
 #else
@@ -320,12 +266,23 @@ void __init prom_init(void)
 			  MSC01_PCI_SWAP_BYTESWAP << MSC01_PCI_SWAP_MEM_SHF |
 			  MSC01_PCI_SWAP_BYTESWAP << MSC01_PCI_SWAP_BAR0_SHF);
 #endif
+		/* Fix up target memory mapping.  */
+		MSC_READ(MSC01_PCI_BAR0, mask);
+		MSC_WRITE(MSC01_PCI_P2SCMSKL, mask & MSC01_PCI_BAR0_SIZE_MSK);
 
-#ifdef CONFIG_MIPS_MALTA
+		/* Don't handle target retries indefinitely.  */
+		if ((data & MSC01_PCI_CFG_MAXRTRY_MSK) ==
+		    MSC01_PCI_CFG_MAXRTRY_MSK)
+			data = (data & ~(MSC01_PCI_CFG_MAXRTRY_MSK <<
+					 MSC01_PCI_CFG_MAXRTRY_SHF)) |
+			       ((MSC01_PCI_CFG_MAXRTRY_MSK - 1) <<
+				MSC01_PCI_CFG_MAXRTRY_SHF);
+
+		wmb();
+		MSC_WRITE(MSC01_PCI_CFG, data);
+		mb();
+
 		set_io_port_base(MALTA_MSC_PORT_BASE);
-#else
-		set_io_port_base((unsigned long)ioremap(0, 0x20000000));
-#endif
 		break;
 
 	default:

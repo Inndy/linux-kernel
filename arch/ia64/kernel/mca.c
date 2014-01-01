@@ -472,9 +472,18 @@ static void
 init_handler_platform (pal_min_state_area_t *ms,
 		       struct pt_regs *pt, struct switch_stack *sw)
 {
+#ifndef	CONFIG_KGDB
 	struct unw_frame_info info;
+#endif
 
 	/* if a kernel debugger is available call it here else just dump the registers */
+#ifdef	CONFIG_KGDB
+	fetch_min_state(ms, pt, sw);
+	/*
+	 * switch_stack is at ((char *) pt) - sizeof (struct switch_stack)
+	 */
+	kgdb_handle_exception(-1, SIGTRAP, 0, pt);
+#else
 
 	/*
 	 * Wait for a bit.  On some machines (e.g., HP's zx2000 and zx6000, INIT can be
@@ -509,6 +518,7 @@ init_handler_platform (pal_min_state_area_t *ms,
 #ifdef CONFIG_SMP
 	if (!tasklist_lock.write_lock)
 		read_unlock(&tasklist_lock);
+#endif
 #endif
 
 	printk("\nINIT dump complete.  Please reboot now.\n");

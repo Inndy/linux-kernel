@@ -27,6 +27,7 @@
 #include <linux/spinlock.h>
 #include <linux/module.h>
 #include <linux/kallsyms.h>
+#include <linux/kgdb.h>
 
 #include <asm/system.h>
 #include <asm/uaccess.h>
@@ -35,17 +36,8 @@
 #include <asm/processor.h>
 #include <asm/sections.h>
 
-#ifdef CONFIG_SH_KGDB
-#include <asm/kgdb.h>
-#define CHK_REMOTE_DEBUG(regs)                                               \
-{                                                                            \
-  if ((kgdb_debug_hook != (kgdb_debug_hook_t *) NULL) && (!user_mode(regs))) \
-  {                                                                          \
-    (*kgdb_debug_hook)(regs);                                                \
-  }                                                                          \
-}
-#else
-#define CHK_REMOTE_DEBUG(regs)
+#ifndef CONFIG_KGDB
+#define kgdb_handle_exception(t, s, e, r)
 #endif
 
 #define DO_ERROR(trapnr, signr, str, name, tsk)				\
@@ -66,7 +58,7 @@ asmlinkage void do_##name(unsigned long r4, unsigned long r5,		\
 	local_irq_enable();						\
 	tsk->thread.error_code = error_code;				\
 	tsk->thread.trap_no = trapnr;					\
-        CHK_REMOTE_DEBUG(&regs);					\
+	kgdb_handle_exception(trapnr, signr, error_code, &regs);	\
 	force_sig(signr, tsk);						\
 	die_if_no_fixup(str,&regs,error_code);				\
 }
@@ -93,10 +85,12 @@ void die(const char * str, struct pt_regs * regs, long err)
 {
 	static int die_counter;
 
+#ifdef CONFIG_KGDB
+	kgdb_handle_exception(1, SIGTRAP, err, regs);
+#endif
 	console_verbose();
 	spin_lock_irq(&die_lock);
 	printk("%s: %04lx [#%d]\n", str, err & 0xffff, ++die_counter);
-	CHK_REMOTE_DEBUG(regs);
 	show_regs(regs);
 	spin_unlock_irq(&die_lock);
 	do_exit(SIGSEGV);

@@ -22,6 +22,9 @@
 void enable_8259A_irq(unsigned int irq);
 void disable_8259A_irq(unsigned int irq);
 
+EXPORT_SYMBOL(enable_8259A_irq);
+EXPORT_SYMBOL(disable_8259A_irq);
+
 /*
  * This is the 'legacy' 8259A Programmable Interrupt Controller,
  * present in the majority of PC/AT boxes.
@@ -31,13 +34,19 @@ void disable_8259A_irq(unsigned int irq);
  * moves to arch independent land
  */
 
-spinlock_t i8259A_lock = SPIN_LOCK_UNLOCKED;
+DEFINE_SPINLOCK(i8259A_lock);
 
 static void end_8259A_irq (unsigned int irq)
 {
 	if (!(irq_desc[irq].status & (IRQ_DISABLED|IRQ_INPROGRESS)) &&
 	    irq_desc[irq].action)
-		enable_8259A_irq(irq);
+		/*
+		 * Hack for 3125: Don't enable the Interrupt, will be done
+		 * inside BH
+		 */
+		if (irq != 4) {
+			enable_8259A_irq(irq);
+		}
 }
 
 #define shutdown_8259A_irq	disable_8259A_irq
@@ -52,14 +61,13 @@ static unsigned int startup_8259A_irq(unsigned int irq)
 }
 
 static struct hw_interrupt_type i8259A_irq_type = {
-	"XT-PIC",
-	startup_8259A_irq,
-	shutdown_8259A_irq,
-	enable_8259A_irq,
-	disable_8259A_irq,
-	mask_and_ack_8259A,
-	end_8259A_irq,
-	NULL
+	.typename = "XT-PIC",
+	.startup = startup_8259A_irq,
+	.shutdown = shutdown_8259A_irq,
+	.enable = enable_8259A_irq,
+	.disable = disable_8259A_irq,
+	.ack = mask_and_ack_8259A,
+	.end = end_8259A_irq,
 };
 
 /*
@@ -322,7 +330,7 @@ void __init init_i8259_irqs (void)
 
 	for (i = 0; i < 16; i++) {
 		irq_desc[i].status = IRQ_DISABLED;
-		irq_desc[i].action = 0;
+		irq_desc[i].action = NULL;
 		irq_desc[i].depth = 1;
 		irq_desc[i].handler = &i8259A_irq_type;
 	}

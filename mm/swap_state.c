@@ -339,7 +339,12 @@ struct page *read_swap_cache_async(swp_entry_t entry,
 		 * Get a new page to read into from swap.
 		 */
 		if (!new_page) {
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined (CONFIG_MIPS_BCM7440 )
+                       new_page = alloc_page_vma(GFP_HIGHUSER | GFP_DMA, vma, addr);
+#else
+
 			new_page = alloc_page_vma(GFP_HIGHUSER, vma, addr);
+#endif
 			if (!new_page)
 				break;		/* Out of memory */
 		}

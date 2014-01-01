@@ -670,7 +670,7 @@ static int scsi_add_lun(struct scsi_device *sdev, char *inq_result, int *bflags)
 				sdev->host->host_no, sdev->channel,
 				sdev->id, sdev->lun);
 
-	/*
+    /*
 	 * End driverfs/devfs code.
 	 */
 
@@ -702,8 +702,18 @@ static int scsi_add_lun(struct scsi_device *sdev, char *inq_result, int *bflags)
 	if (*bflags & BLIST_SINGLELUN)
 		sdev->single_lun = 1;
 
-
+#if defined (CONFIG_MIPS_BCM7440)
+	if (sdev->type == TYPE_ROM) {
+		/* CD/DVD */
+		sdev->use_12_for_rw = 1;
+		sdev->r12_cnt = 0;
+	}
+	else {
+		sdev->use_10_for_rw = 1;
+	}
+#else
 	sdev->use_10_for_rw = 1;
+#endif
 
 	if (*bflags & BLIST_MS_SKIP_PAGE_08)
 		sdev->skip_ms_page_8 = 1;

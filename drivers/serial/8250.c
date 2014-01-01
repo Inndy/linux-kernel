@@ -43,8 +43,26 @@
 
 #include <asm/io.h>
 #include <asm/irq.h>
+#include <asm/serial.h>
 
 #include "8250.h"
+
+#ifdef	CONFIG_KGDB
+extern int kgdb_detached;		/* RYH */
+#endif
+
+/*
+ * On the 7401B0, the bcm3250 UART driver claimed the first 64 entries,
+ * so we start the 16550A at ttyS64.
+ * The 7401A0 platform does not have a 16550A style UART.
+ */
+#if defined( CONFIG_MIPS_BCM7401 ) || defined( CONFIG_MIPS_BCM7402 ) \
+                                   || defined( CONFIG_MIPS_BCM7403 ) \
+				   || defined( CONFIG_MIPS_BCM7452 )
+#define SERIAL_DEV_OFFSET	64
+#else
+#define SERIAL_DEV_OFFSET	0
+#endif
 
 /*
  * Configuration:
@@ -116,7 +134,11 @@ static unsigned int share_irqs = SERIAL8250_SHARE_IRQS;
 #endif
 
 static struct old_serial_port old_serial_port[] = {
+#ifdef BRCM_UART_PORT_DEFNS
+	BRCM_UART_PORT_DEFNS
+#else
 	SERIAL_PORT_DFNS /* defined in asm/serial.h */
+#endif
 };
 
 #define UART_NR	(ARRAY_SIZE(old_serial_port) + CONFIG_SERIAL_8250_NR_UARTS)
@@ -275,7 +297,8 @@ static _INLINE_ unsigned int serial_in(struct uart_8250_port *up, int offset)
 		return inb(up->port.iobase + 1);
 
 	case UPIO_MEM:
-		return readb(up->port.membase + offset);
+		// THT: was readb, but would fail on BE
+		return readl(up->port.membase + offset);
 
 	case UPIO_MEM32:
 		return readl(up->port.membase + offset);
@@ -286,7 +309,7 @@ static _INLINE_ unsigned int serial_in(struct uart_8250_port *up, int offset)
 }
 
 static _INLINE_ void
-serial_out(struct uart_8250_port *up, int offset, int value)
+serial_out_priv(struct uart_8250_port *up, int offset, unsigned int value)
 {
 	offset <<= up->port.regshift;
 
@@ -297,7 +320,8 @@ serial_out(struct uart_8250_port *up, int offset, int value)
 		break;
 
 	case UPIO_MEM:
-		writeb(value, up->port.membase + offset);
+		// THT: was writeb, but would fail on BE
+		writel(value, up->port.membase + offset);
 		break;
 
 	case UPIO_MEM32:
@@ -308,6 +332,38 @@ serial_out(struct uart_8250_port *up, int offset, int value)
 		outb(value, up->port.iobase + offset);
 	}
 }
+
+
+/* 
+ * For Broadcom 16550A UARTs, writing to the LCR or the divisor latch registers
+ * when the UART is busy, will be ignored.  We need to do this only when we turn
+ * on the Busy Detect extension of the IIR
+ */
+#ifdef CONFIG_MIPS_BRCMUART_EXTENSION
+
+static _INLINE_ void
+serial_out(struct uart_8250_port *up, int offset, unsigned int value)
+{
+	while (1) {
+		serial_out_priv(up, offset, value);
+	
+		if (offset == UART_LCR || offset == UART_DLL || offset == UART_DLM) {
+			unsigned int readval;
+			
+			readval = serial_in(up, offset);
+			if (readval != value) {
+				continue;
+			}
+		}
+		break;
+	} 
+}
+
+
+#else
+ #define serial_out(up, offset, value) serial_out_priv(up, offset, value)
+
+#endif
 
 /*
  * We used to support using pause I/O for certain machines.  We
@@ -799,7 +855,7 @@ static void autoconfig(struct uart_8250_port *up, unsigned int probeflags)
 		return;
 
 	DEBUG_AUTOCONF("ttyS%d: autoconf (0x%04x, 0x%p): ",
-			up->port.line, up->port.iobase, up->port.membase);
+			up->port.line+SERIAL_DEV_OFFSET, up->port.iobase, up->port.membase);
 
 	/*
 	 * We really do need global IRQs disabled here - we're going to
@@ -923,7 +979,7 @@ static void autoconfig(struct uart_8250_port *up, unsigned int probeflags)
 	if (up->capabilities != uart_config[up->port.type].flags) {
 		printk(KERN_WARNING
 		       "ttyS%d: detected caps %08x should be %08x\n",
-			up->port.line, up->capabilities,
+			up->port.line+SERIAL_DEV_OFFSET, up->capabilities,
 			uart_config[up->port.type].flags);
 	}
 
@@ -1130,6 +1186,61 @@ receive_chars(struct uart_8250_port *up, int *status, struct pt_regs *regs)
 		if (uart_handle_sysrq_char(&up->port, ch, regs))
 			goto ignore_char;
 
+#ifdef	CONFIG_KGDB	/* RYH */
+{
+//volatile unsigned long* pRacCount0 = (volatile unsigned long*) 0xb0000618;
+//volatile unsigned long* pRacCount1 = (volatile unsigned long*) 0xb000061c;
+
+
+	switch (ch) {
+		case 0x3:	/* CTRL-C breakpoint */
+		   if ( up->port.line == 1 ) {
+		       if ( kgdb_detached ) {
+			   kgdb_detached = 0;
+			   set_debug_traps();
+		       }
+                       breakpoint();
+                       goto goout;
+		   }
+		   break;
+
+
+		case 0xb: 	/* CTRL-K breakpoint */
+                   printk("\nkgdb enter> Please Start a Gdb Session To UART-B With 115200");
+		   if ( kgdb_detached ) {
+			   kgdb_detached = 0;
+			   set_debug_traps();
+	           }
+                   breakpoint();
+		   goto goout;
+
+		case 0x17: 	/* Print out RAC count on CTRL-W */
+		   //printk("RAC0 Count = %lx, RAC1 Count = %lx\n", *pRacCount0, *pRacCount1);
+		   break;
+
+		default:
+		   break;
+	}
+}
+
+#else /* Intercept CTRL-W and display stack */
+
+#if (HUMAX_MODIFY == y)
+		// do nothing
+		// receive RX data as it is. Otherwise, binary data can be understood as a special meaning control data.
+		// 2008.09.29 dcchung
+#else
+		   /* Intercept CTRL-W - only when not debugging on 2nd serial port */
+                if (ch == 0x17) /* CTRL-W  */
+                {
+			show_regs(regs);
+			// THT 4/05/06: Display stack to debug PR20442
+			show_stack(current, NULL);
+			show_trace(current, NULL);
+		    }
+#endif
+#endif
+
 		uart_insert_char(&up->port, lsr, UART_LSR_OE, ch, flag);
 
 	ignore_char:
@@ -1139,6 +1250,9 @@ receive_chars(struct uart_8250_port *up, int *status, struct pt_regs *regs)
 	tty_flip_buffer_push(tty);
 	spin_lock(&up->port.lock);
 	*status = lsr;
+
+goout:
+	;
 }
 
 static _INLINE_ void transmit_chars(struct uart_8250_port *up)
@@ -1253,7 +1367,15 @@ static irqreturn_t serial8250_interrupt(int irq, void *dev_id, struct pt_regs *r
 			handled = 1;
 
 			end = NULL;
-		} else if (end == NULL)
+		} 
+		else if ((iir & 0x0f) == 0x7) { // Busy Detect
+			unsigned int lsr = serial_in(up, UART_LSR);
+			
+			//printk("######## iir=%08x, lsr=%08x\n", iir, lsr);
+			iir = serial_in(up, UART_IIR);
+			//printk("@@@@@@@@  iir=%08x\n", iir);
+		}
+		else if (end == NULL)
 			end = l;
 
 		l = l->next;
@@ -1303,6 +1425,10 @@ static int serial_link_irq_chain(struct uart_8250_port *up)
 
 	spin_lock_irq(&i->lock);
 
+// Brcm specific
+#if defined(CONFIG_SMP) && (defined(CONFIG_MIPS_BCM7400) || defined(CONFIG_MIPS_BCM7440))
+	irq_flags |= SA_INTERRUPT;
+#endif
 	if (i->head) {
 		list_add(&up->list, i->head);
 		spin_unlock_irq(&i->lock);
@@ -1429,11 +1555,16 @@ static void serial8250_break_ctl(struct uart_port *port, int break_state)
 	spin_unlock_irqrestore(&up->port.lock, flags);
 }
 
+static int released_irq = -1;
+
 static int serial8250_startup(struct uart_port *port)
 {
 	struct uart_8250_port *up = (struct uart_8250_port *)port;
 	unsigned long flags;
 	int retval;
+
+ 	if (up->port.irq == released_irq)
+		return -EBUSY;
 
 	up->capabilities = uart_config[up->port.type].flags;
 	up->mcr = 0;
@@ -1480,7 +1611,7 @@ static int serial8250_startup(struct uart_port *port)
 	 */
 	if (!(up->port.flags & UPF_BUGGY_UART) &&
 	    (serial_inp(up, UART_LSR) == 0xff)) {
-		printk("ttyS%d: LSR safety check engaged!\n", up->port.line);
+		printk("ttyS%d: LSR safety check engaged!\n", up->port.line+SERIAL_DEV_OFFSET);
 		return -ENODEV;
 	}
 
@@ -1676,6 +1807,13 @@ serial8250_set_termios(struct uart_port *port, struct termios *termios,
 	baud = uart_get_baud_rate(port, termios, old, 0, port->uartclk/16); 
 	quot = serial8250_get_divisor(port, baud);
 
+	/*
+	 * THT: Workaround for Ikos, forcing a value of quot = 14
+	 */
+#ifdef CONFIG_MIPS_BRCM_IKOS
+	baud = 375000;
+	quot = 14;
+#endif
 	/*
 	 * Work around a bug in the Oxford Semiconductor 952 rev B
 	 * chip which causes it to seriously miscalculate baud rates
@@ -2065,6 +2203,9 @@ serial8250_register_ports(struct uart_driver *drv, struct device *dev)
 	for (i = 0; i < UART_NR; i++) {
 		struct uart_8250_port *up = &serial8250_ports[i];
 
+		if (up->port.irq == released_irq)
+			continue;
+
 		up->port.dev = dev;
 		uart_add_one_port(drv, &up->port);
 	}
@@ -2219,7 +2360,7 @@ int __init serial8250_start_console(struct uart_port *port, char *options)
 
 	add_preferred_console("ttyS", line, options);
 	printk("Adding console on ttyS%d at %s 0x%lx (options '%s')\n",
-		line, port->iotype == UPIO_MEM ? "MMIO" : "I/O port",
+		line+SERIAL_DEV_OFFSET, port->iotype == UPIO_MEM ? "MMIO" : "I/O port",
 		port->iotype == UPIO_MEM ? (unsigned long) port->mapbase :
 		    (unsigned long) port->iobase, options);
 	if (!(serial8250_console.flags & CON_ENABLED)) {
@@ -2240,8 +2381,8 @@ static struct uart_driver serial8250_reg = {
 	.devfs_name		= "tts/",
 	.dev_name		= "ttyS",
 	.major			= TTY_MAJOR,
-	.minor			= 64,
-	.nr			= UART_NR,
+	.minor			= 64 + SERIAL_DEV_OFFSET,
+	.nr				= UART_NR,
 	.cons			= SERIAL8250_CONSOLE,
 };
 
@@ -2434,6 +2575,9 @@ int serial8250_register_port(struct uart_port *port)
 	if (port->uartclk == 0)
 		return -EINVAL;
 
+	if (port->irq == released_irq)
+		return -EBUSY;
+
 	down(&serial_sem);
 
 	uart = serial8250_find_match_or_unused(port);
@@ -2487,6 +2631,50 @@ void serial8250_unregister_port(int line)
 }
 EXPORT_SYMBOL(serial8250_unregister_port);
 
+/**
+ *	serial8250_release_irq - remove a 16x50 serial port at runtime based
+ *	on IRQ
+ *	@irq: IRQ number
+ *
+ *	Remove one serial port.  This may not be called from interrupt
+ *	context.  This is called when the caller know the IRQ of the
+ *	port they want, but not where it is in our table.  This allows
+ *	for one port, based on IRQ, to be permanently released from us.
+ */
+
+int serial8250_release_irq(int irq)
+{
+        struct uart_8250_port *up;
+	int ttyS;
+
+	if (released_irq == irq)
+		return 0;
+
+	if (released_irq != -1)
+		return -EBUSY;
+
+	released_irq = irq;
+	for (ttyS = 0; ttyS < UART_NR; ttyS++){
+		up =  &serial8250_ports[ttyS];
+		if (up->port.irq == irq && (irq_lists + irq)->head)
+			serial8250_unregister_port(up->port.line);
+        }
+	return 0;
+}
+EXPORT_SYMBOL(serial8250_release_irq);
+
+#if defined( CONFIG_MIPS_BCM7401B0 ) || defined( CONFIG_MIPS_BCM7402 ) || \
+    defined( CONFIG_MIPS_BCM7401C0 ) || defined( CONFIG_MIPS_BCM7403A0 ) || \
+    defined( CONFIG_MIPS_BCM7452A0 )
+/*
+ * THT: On BCM7401, where both the bcm3250 style UART and the 16550A style UART
+ * are present, we have to make sure that the 3250 UARTS are initialized first.
+ */
+extern int bcm3250_uart_init(void);
+
+
+#endif
+
 static int __init serial8250_init(void)
 {
 	int ret, i;
@@ -2497,6 +2685,13 @@ static int __init serial8250_init(void)
 
 	for (i = 0; i < NR_IRQS; i++)
 		spin_lock_init(&irq_lists[i].lock);
+
+#if defined( CONFIG_MIPS_BCM7401B0 ) || defined( CONFIG_MIPS_BCM7402 ) || \
+    defined( CONFIG_MIPS_BCM7401C0 ) || defined( CONFIG_MIPS_BCM7403A0 ) || \
+    defined( CONFIG_MIPS_BCM7452A0 )
+	bcm3250_uart_init();
+	
+#endif
 
 	ret = uart_register_driver(&serial8250_reg);
 	if (ret)
@@ -2636,3 +2831,46 @@ void unregister_serial(int line)
 	serial8250_unregister_port(line);
 }
 EXPORT_SYMBOL(unregister_serial);
+
+/**
+ *	debug_request_serial_line - disable a 16x50 serial port at runtime
+ *	@line: serial line number
+ *
+ *	Disable one serial port.  This may not be called from
+ *	interrupt context. This function is for the explicit purpose
+ *	of giving the serial line over to the debugger.
+ */
+static struct uart_port debug_port;
+void debug_request_serial_line(int line)
+{
+	struct uart_8250_port *uart = &serial8250_ports[line];
+	/* For now, irq sharing doesn't seem to be supported so the
+	 * irq that the debug port is on is marked as released
+	 */
+	released_irq = uart->port.irq;
+	debug_port.flags = uart->port.flags;
+	debug_port.type = uart->port.type;
+	debug_port.dev = uart->port.dev;
+	serial8250_unregister_port(line);
+}
+EXPORT_SYMBOL(debug_request_serial_line);
+
+/**
+ *	debug_release_serial_line - re-enable a 16x50 serial port at runtime
+ *	@line: serial line number
+ *
+ *	Re-enable one serial port.  This may not be called from
+ *	interrupt context. This function is for the explicit purpose
+ *	of the debugger giving the serial line back to the standard
+ *	serial driver.
+ */
+void debug_release_serial_line(int line)
+{
+	struct uart_port *port = &serial8250_ports[line].port;
+	released_irq = -1;
+	port->flags = debug_port.flags;
+	port->type = debug_port.type;
+	port->dev = debug_port.dev;
+	serial8250_register_port(port);
+}
+EXPORT_SYMBOL(debug_release_serial_line);

@@ -42,12 +42,14 @@
 
 #include "common.h"
 
+#if 0
 static struct map_desc osk5912_io_desc[] __initdata = {
 { OMAP_OSK_NOR_FLASH_BASE, OMAP_OSK_NOR_FLASH_START, OMAP_OSK_NOR_FLASH_SIZE,
 	MT_DEVICE },
 };
+#endif
 
-static int __initdata osk_serial_ports[OMAP_MAX_NR_PORTS] = {1, 0, 0};
+static int __initdata osk_serial_ports[OMAP_MAX_NR_PORTS] = {1, 1, 1};
 
 static struct resource osk5912_smc91x_resources[] = {
 	[0] = {

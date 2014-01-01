@@ -1,5 +1,5 @@
 /*
- * $Id: mtd_blkdevs.c,v 1.24 2004/11/16 18:28:59 dwmw2 Exp $
+ * $Id: mtd_blkdevs.c,v 1.27 2005/11/07 11:14:20 gleixner Exp $
  *
  * (C) 2003 David Woodhouse <dwmw2@infradead.org>
  *
@@ -21,7 +21,30 @@
 #include <linux/init.h>
 #include <asm/semaphore.h>
 #include <asm/uaccess.h>
-#include <linux/devfs_fs_kernel.h>
+
+#define FLASH_CMD_WRITE 					0x1E
+#define FLASH_CMD_ERASE 					0x1D
+#if (HUMAX_MODIFY == y)
+#define FLASH_CMD_ERASE_EXT					0x101D
+#define FLASH_CMD_GET_BLKINFO				0x1F
+#define FLASH_CMD_READ_NONCACHE				0x20
+#ifdef CONFIG_MTD_OTP
+#define FLASH_CMD_READ_PROT_REG 0x30
+#define FLASH_CMD_WRITE_PROT_REG 0x31
+#define FLASH_CMD_LOCK_PROT_REG 0x32
+#endif
+#endif
+
+// JHK 08.03.09
+#define FLASH_CMD_MANUFACTURE_ID 	0x1C
+#define FLASH_CMD_DEVICE_ID				0x1B
+
+typedef struct _FlshCmdBlk
+{
+	unsigned long ulAddr;
+	unsigned long ulSize;
+	unsigned char *pucDataBuffer;
+} FlashCmdBlk;
 
 static LIST_HEAD(blktrans_majors);
 
@@ -86,7 +109,7 @@ static int mtd_blktrans_thread(void *arg)
 	daemonize("%sd", tr->name);
 
 	/* daemonize() doesn't do this for us since some kernel threads
-	   actually want to deal with signals. We can't just call 
+	   actually want to deal with signals. We can't just call
 	   exit_sighand() since that'll cause an oops when we finally
 	   do exit. */
 	spin_lock_irq(&current->sighand->siglock);
@@ -95,7 +118,7 @@ static int mtd_blktrans_thread(void *arg)
 	spin_unlock_irq(&current->sighand->siglock);
 
 	spin_lock_irq(rq->queue_lock);
-		
+
 	while (!tr->blkcore_priv->exiting) {
 		struct request *req;
 		struct mtd_blktrans_dev *dev;
@@ -158,7 +181,7 @@ static int blktrans_open(struct inode *i, struct file *f)
 	if (!try_module_get(tr->owner))
 		goto out_tr;
 
-	/* FIXME: Locking. A hot pluggable device can go away 
+	/* FIXME: Locking. A hot pluggable device can go away
 	   (del_mtd_device can be called for it) without its module
 	   being unloaded. */
 	dev->mtd->usecount++;
@@ -196,13 +219,66 @@ static int blktrans_release(struct inode *i, struct file *f)
 }
 
 
-static int blktrans_ioctl(struct inode *inode, struct file *file, 
+static int blktrans_ioctl(struct inode *inode, struct file *file,
 			      unsigned int cmd, unsigned long arg)
 {
+	extern int mtdblock_erasesect(struct mtd_blktrans_dev *dev,unsigned long block);
+	extern int mtdblock_writesect2(struct mtd_blktrans_dev *dev, unsigned long startaddr, unsigned long len, char *buf);
+	extern int mtd_getcfiids(struct mtd_blktrans_dev *dev, unsigned char ids);// JHK 08.03.09
+#if (HUMAX_MODIFY == y)
+	extern int mtdblock_readsect2(struct mtd_blktrans_dev *dev,  unsigned long startaddr, unsigned long len, char *buf);
+	extern int mtdblock_getblockinfo(struct mtd_blktrans_dev *dev,unsigned long,unsigned char *);
+#ifdef CONFIG_MTD_OTP
+	extern int mtdblock_readprotregs(struct mtd_blktrans_dev *dev,unsigned long startaddr, unsigned long len, char *buf);
+	extern int mtdblock_writeprotregs(struct mtd_blktrans_dev *dev,unsigned long startaddr, unsigned long len, char *buf);
+	extern int mtdblock_lockprotregs(struct mtd_blktrans_dev *dev,unsigned long startaddr, unsigned long len);
+#endif
+#endif
 	struct mtd_blktrans_dev *dev = inode->i_bdev->bd_disk->private_data;
 	struct mtd_blktrans_ops *tr = dev->tr;
+	FlashCmdBlk *pflashcmdblk;
+#if (HUMAX_MODIFY == y)
+	unsigned long addr;
+#endif
+	pflashcmdblk = (FlashCmdBlk *)arg;
 
 	switch (cmd) {
+	case FLASH_CMD_ERASE: //erase block
+		return mtdblock_erasesect(dev, 0x20000* (*(char *)arg));
+#if (HUMAX_MODIFY == y)
+	case FLASH_CMD_ERASE_EXT:
+		pflashcmdblk = (FlashCmdBlk *)arg;
+		addr = pflashcmdblk->ulAddr | ((pflashcmdblk->ulSize == 0x20000)?0x00000000:0x80000000);
+		return mtdblock_erasesect(dev, addr);
+	case FLASH_CMD_GET_BLKINFO:
+		pflashcmdblk = (FlashCmdBlk *)arg;
+		return mtdblock_getblockinfo(dev,pflashcmdblk->ulAddr, pflashcmdblk->pucDataBuffer);
+#endif
+	case FLASH_CMD_WRITE: //write block
+#if (HUMAX_MODIFY == y)
+		pflashcmdblk = (FlashCmdBlk *)arg;
+#endif
+		return mtdblock_writesect2(dev, (pflashcmdblk->ulAddr),(pflashcmdblk->ulSize),(pflashcmdblk->pucDataBuffer));		
+#if (HUMAX_MODIFY == y)
+	case FLASH_CMD_READ_NONCACHE: //noncached read
+		pflashcmdblk = (FlashCmdBlk *)arg;
+		return mtdblock_readsect2(dev, (pflashcmdblk->ulAddr),(pflashcmdblk->ulSize),(pflashcmdblk->pucDataBuffer));	
+#ifdef CONFIG_MTD_OTP
+	case FLASH_CMD_READ_PROT_REG:
+		pflashcmdblk = (FlashCmdBlk *)arg;
+		return mtdblock_readprotregs(dev, (pflashcmdblk->ulAddr),(pflashcmdblk->ulSize),(pflashcmdblk->pucDataBuffer));
+	case FLASH_CMD_WRITE_PROT_REG:
+		pflashcmdblk = (FlashCmdBlk *)arg;
+		return mtdblock_writeprotregs(dev, (pflashcmdblk->ulAddr),(pflashcmdblk->ulSize),(pflashcmdblk->pucDataBuffer));
+	case FLASH_CMD_LOCK_PROT_REG:
+		pflashcmdblk = (FlashCmdBlk *)arg;
+		return mtdblock_lockprotregs(dev, (pflashcmdblk->ulAddr),(pflashcmdblk->ulSize));		
+#endif
+#endif
+	case FLASH_CMD_MANUFACTURE_ID:// JHK 08.03.09
+		return mtd_getcfiids(dev, 0);
+	case FLASH_CMD_DEVICE_ID:// JHK 08.03.09
+		return mtd_getcfiids(dev, 1);
 	case BLKFLSBUF:
 		if (tr->flush)
 			return tr->flush(dev);
@@ -265,7 +341,7 @@ int add_mtd_blktrans_dev(struct mtd_blktrans_dev *new)
 			/* Required number was free */
 			list_add_tail(&new->list, &d->list);
 			goto added;
-		} 
+		}
 		last_devnum = d->devnum;
 	}
 	if (new->devnum == -1)
@@ -289,11 +365,19 @@ int add_mtd_blktrans_dev(struct mtd_blktrans_dev *new)
 	gd->major = tr->major;
 	gd->first_minor = (new->devnum) << tr->part_bits;
 	gd->fops = &mtd_blktrans_ops;
-	
-	snprintf(gd->disk_name, sizeof(gd->disk_name),
-		 "%s%c", tr->name, (tr->part_bits?'a':'0') + new->devnum);
-	snprintf(gd->devfs_name, sizeof(gd->devfs_name),
-		 "%s/%c", tr->name, (tr->part_bits?'a':'0') + new->devnum);
+
+	if (tr->part_bits)
+		if (new->devnum < 26)
+			snprintf(gd->disk_name, sizeof(gd->disk_name),
+				 "%s%c", tr->name, 'a' + new->devnum);
+		else
+			snprintf(gd->disk_name, sizeof(gd->disk_name),
+				 "%s%c%c", tr->name,
+				 'a' - 1 + new->devnum / 26,
+				 'a' + new->devnum % 26);
+	else
+		snprintf(gd->disk_name, sizeof(gd->disk_name),
+			 "%s%d", tr->name, new->devnum);
 
 	/* 2.5 has capacity in units of 512 bytes while still
 	   having BLOCK_SIZE_BITS set to 10. Just to keep us amused. */
@@ -307,7 +391,7 @@ int add_mtd_blktrans_dev(struct mtd_blktrans_dev *new)
 		set_disk_ro(gd, 1);
 
 	add_disk(gd);
-	
+
 	return 0;
 }
 
@@ -322,7 +406,7 @@ int del_mtd_blktrans_dev(struct mtd_blktrans_dev *old)
 
 	del_gendisk(old->blkcore_priv);
 	put_disk(old->blkcore_priv);
-		
+
 	return 0;
 }
 
@@ -361,12 +445,12 @@ static struct mtd_notifier blktrans_notifier = {
 	.add = blktrans_notify_add,
 	.remove = blktrans_notify_remove,
 };
-      
+
 int register_mtd_blktrans(struct mtd_blktrans_ops *tr)
 {
 	int ret, i;
 
-	/* Register the notifier if/when the first device type is 
+	/* Register the notifier if/when the first device type is
 	   registered, to prevent the link/init ordering from fucking
 	   us over. */
 	if (!blktrans_notifier.list.next)
@@ -409,9 +493,7 @@ int register_mtd_blktrans(struct mtd_blktrans_ops *tr)
 		kfree(tr->blkcore_priv);
 		up(&mtd_table_mutex);
 		return ret;
-	} 
-
-	devfs_mk_dir(tr->name);
+	}
 
 	INIT_LIST_HEAD(&tr->devs);
 	list_add(&tr->list, &blktrans_majors);
@@ -445,7 +527,6 @@ int deregister_mtd_blktrans(struct mtd_blktrans_ops *tr)
 		tr->remove_dev(dev);
 	}
 
-	devfs_remove(tr->name);
 	blk_cleanup_queue(tr->blkcore_priv->rq);
 	unregister_blkdev(tr->major, tr->name);
 

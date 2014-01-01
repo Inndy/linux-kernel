@@ -23,6 +23,7 @@
 #include <asm/irq.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/flash.h>
+#include <asm/kgdb.h>
 
 void __init ixdp425_map_io(void) 
 {
@@ -82,7 +83,7 @@ static struct plat_serial8250_port ixdp425_uart_data[] = {
 		.mapbase	= IXP4XX_UART1_BASE_PHYS,
 		.membase	= (char *)IXP4XX_UART1_BASE_VIRT + REG_OFFSET,
 		.irq		= IRQ_IXP4XX_UART1,
-		.flags		= UPF_BOOT_AUTOCONF,
+		.flags		= UPF_BOOT_AUTOCONF | UPF_SHARE_IRQ,
 		.iotype		= UPIO_MEM,
 		.regshift	= 2,
 		.uartclk	= IXP4XX_UART_XTAL,
@@ -91,7 +92,7 @@ static struct plat_serial8250_port ixdp425_uart_data[] = {
 		.mapbase	= IXP4XX_UART2_BASE_PHYS,
 		.membase	= (char *)IXP4XX_UART2_BASE_VIRT + REG_OFFSET,
 		.irq		= IRQ_IXP4XX_UART1,
-		.flags		= UPF_BOOT_AUTOCONF,
+		.flags		= UPF_BOOT_AUTOCONF | UPF_SHARE_IRQ,
 		.iotype		= UPIO_MEM,
 		.regshift	= 2,
 		.uartclk	= IXP4XX_UART_XTAL,
@@ -125,6 +126,11 @@ static void __init ixdp425_init(void)
 	}
 
 	platform_add_devices(ixdp425_devices, ARRAY_SIZE(ixdp425_devices));
+
+#ifdef CONFIG_KGDB_8250
+	kgdb8250_add_port(0, &ixdp425_serial_ports[0]);
+	kgdb8250_add_port(1, &ixdp425_serial_ports[1]);
+#endif
 }
 
 MACHINE_START(IXDP425, "Intel IXDP425 Development Platform")

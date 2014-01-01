@@ -7,13 +7,14 @@
  *
  * This code is GPL
  *
- * $Id: mtdconcat.c,v 1.9 2004/06/30 15:17:41 dbrown Exp $
+ * $Id: mtdconcat.c,v 1.11 2005/11/07 11:14:20 gleixner Exp $
  */
 
-#include <linux/module.h>
-#include <linux/types.h>
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/sched.h>
+#include <linux/types.h>
 
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/concat.h>
@@ -43,7 +44,7 @@ struct mtd_concat {
  */
 #define CONCAT(x)  ((struct mtd_concat *)(x))
 
-/* 
+/*
  * MTD methods which look up the relevant subdevice, translate the
  * effective address and pass through to the subdevice.
  */
@@ -298,6 +299,54 @@ concat_read_oob(struct mtd_info *mtd, loff_t from, size_t len,
 }
 
 static int
+concat_read_oobfree(struct mtd_info *mtd, loff_t from, size_t len,
+		    size_t * retlen, u_char * buf)
+{
+	struct mtd_concat *concat = CONCAT(mtd);
+	int err = -EINVAL;
+	int i;
+
+	*retlen = 0;
+
+	for (i = 0; i < concat->num_subdev; i++) {
+		struct mtd_info *subdev = concat->subdev[i];
+		size_t size, retsize;
+
+		if (from >= subdev->size) {
+			/* Not destined for this subdev */
+			size = 0;
+			from -= subdev->size;
+			continue;
+		}
+		if (from + len > subdev->size)
+			/* First part goes into this subdev */
+			size = subdev->size - from;
+		else
+			/* Entire transaction goes into this subdev */
+			size = len;
+
+		if (subdev->read_oobfree)
+			err = subdev->read_oobfree(subdev, from, size,
+					           &retsize, buf);
+		else
+			err = -EINVAL;
+
+		if (err)
+			break;
+
+		*retlen += retsize;
+		len -= size;
+		if (len == 0)
+			break;
+
+		err = -EINVAL;
+		buf += size;
+		from = 0;
+	}
+	return err;
+}
+
+static int
 concat_write_oob(struct mtd_info *mtd, loff_t to, size_t len,
 		 size_t * retlen, const u_char * buf)
 {
@@ -329,6 +378,56 @@ concat_write_oob(struct mtd_info *mtd, loff_t to, size_t len,
 		else if (subdev->write_oob)
 			err = subdev->write_oob(subdev, to, size, &retsize,
 						buf);
+		else
+			err = -EINVAL;
+
+		if (err)
+			break;
+
+		*retlen += retsize;
+		len -= size;
+		if (len == 0)
+			break;
+
+		err = -EINVAL;
+		buf += size;
+		to = 0;
+	}
+	return err;
+}
+
+static int
+concat_write_oobfree(struct mtd_info *mtd, loff_t to, size_t len,
+		     size_t * retlen, const u_char * buf)
+{
+	struct mtd_concat *concat = CONCAT(mtd);
+	int err = -EINVAL;
+	int i;
+
+	if (!(mtd->flags & MTD_WRITEABLE))
+		return -EROFS;
+
+	*retlen = 0;
+
+	for (i = 0; i < concat->num_subdev; i++) {
+		struct mtd_info *subdev = concat->subdev[i];
+		size_t size, retsize;
+
+		if (to >= subdev->size) {
+			size = 0;
+			to -= subdev->size;
+			continue;
+		}
+		if (to + len > subdev->size)
+			size = subdev->size - to;
+		else
+			size = len;
+
+		if (!(subdev->flags & MTD_WRITEABLE))
+			err = -EROFS;
+		else if (subdev->write_oobfree)
+			err = subdev->write_oobfree(subdev, to, size, &retsize,
+						    buf);
 		else
 			err = -EINVAL;
 
@@ -690,6 +789,10 @@ struct mtd_info *mtd_concat_create(struct mtd_info *subdev[],	/* subdevices to c
 		concat->mtd.read_oob = concat_read_oob;
 	if (subdev[0]->write_oob)
 		concat->mtd.write_oob = concat_write_oob;
+	if (subdev[0]->read_oobfree)
+		concat->mtd.read_oobfree = concat_read_oobfree;
+	if (subdev[0]->write_oobfree)
+		concat->mtd.write_oobfree = concat_write_oobfree;
 
 	concat->subdev[0] = subdev[0];
 
@@ -725,7 +828,10 @@ struct mtd_info *mtd_concat_create(struct mtd_info *subdev[],	/* subdevices to c
 		    !concat->mtd.read_ecc  != !subdev[i]->read_ecc ||
 		    !concat->mtd.write_ecc != !subdev[i]->write_ecc ||
 		    !concat->mtd.read_oob  != !subdev[i]->read_oob ||
-		    !concat->mtd.write_oob != !subdev[i]->write_oob) {
+		    !concat->mtd.write_oob != !subdev[i]->write_oob ||
+		    !concat->mtd.read_oobfree != !subdev[i]->read_oobfree ||
+		    !concat->mtd.write_oobfree != !subdev[i]->write_oobfree 
+		    ) {
 			kfree(concat);
 			printk("Incompatible OOB or ECC data on \"%s\"\n",
 			       subdev[i]->name);
@@ -877,7 +983,7 @@ struct mtd_info *mtd_concat_create(struct mtd_info *subdev[],	/* subdevices to c
 	return &concat->mtd;
 }
 
-/* 
+/*
  * This function destroys an MTD object obtained from concat_mtd_devs()
  */
 

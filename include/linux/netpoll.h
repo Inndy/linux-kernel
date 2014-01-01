@@ -17,7 +17,7 @@ struct netpoll {
 	struct net_device *dev;
 	char dev_name[16], *name;
 	int rx_flags;
-	void (*rx_hook)(struct netpoll *, int, char *, int);
+	void (*rx_hook)(struct netpoll *, int, char *, int, struct sk_buff *);
 	void (*drop)(struct sk_buff *skb);
 	u32 local_ip, remote_ip;
 	u16 local_port, remote_port;

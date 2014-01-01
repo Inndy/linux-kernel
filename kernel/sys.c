@@ -859,7 +859,7 @@ asmlinkage long sys_setfsuid(uid_t uid)
 }
 
 /*
- * Samma på svenska..
+ * Samma psvenska..
  */
 asmlinkage long sys_setfsgid(gid_t gid)
 {
@@ -1070,6 +1070,12 @@ asmlinkage long sys_getsid(pid_t pid)
 		return retval;
 	}
 }
+
+asmlinkage long sys_get_jiffies( void )
+{
+  return (long)get_jiffies_64();
+}
+
 
 asmlinkage long sys_setsid(void)
 {
@@ -1370,6 +1376,161 @@ asmlinkage long sys_newuname(struct new_utsname __user * name)
 	int errno = 0;
 
 	down_read(&uts_sem);
+
+#if defined(CONFIG_MIPS_BCM3560A0)
+	strncpy(&system_utsname.machine[0],"3560a0",7);
+
+#elif defined(CONFIG_MIPS_BCM3560B0)
+	strncpy(&system_utsname.machine[0],"3560b0",7);
+
+#elif defined(CONFIG_MIPS_BCM3563)
+	strncpy(&system_utsname.machine[0],"3563",5);
+
+#elif defined(CONFIG_MIPS_BCM7038B0)
+	strncpy(&system_utsname.machine[0],"7038b0",7);
+
+#elif defined(CONFIG_MIPS_BCM7038C0)
+  #if defined(CONFIG_MIPS_BCM97398)
+    strncpy(&system_utsname.machine[0],"97398",6);
+  #elif defined( CONFIG_MIPS_BCM97438 )
+       strncpy(&system_utsname.machine[0],"97438",6);
+  #else
+	strncpy(&system_utsname.machine[0],"7038c0",7);
+  #endif
+
+#elif defined(CONFIG_MIPS_BCM7110)
+	strncpy(&system_utsname.machine[0],"7110",5);
+
+#elif defined(CONFIG_MIPS_BCM7111)
+	strncpy(&system_utsname.machine[0],"7111",5);
+
+#elif defined(CONFIG_MIPS_BCM7112)
+	strncpy(&system_utsname.machine[0],"7112",5);
+
+#elif defined(CONFIG_MIPS_BCM7115)
+	strncpy(&system_utsname.machine[0],"7115",5);
+
+#elif defined(CONFIG_MIPS_BCM7118A0) 
+	strncpy(&system_utsname.machine[0],"7118a0",7);
+
+#elif defined(CONFIG_MIPS_BCM7312)
+	strncpy(&system_utsname.machine[0],"7312",5);
+
+#elif defined(CONFIG_MIPS_BCM7314)
+	strncpy(&system_utsname.machine[0],"7314",5);
+
+#elif defined(CONFIG_MIPS_BCM7315)
+	strncpy(&system_utsname.machine[0],"7315",5);
+#elif defined(CONFIG_MIPS_BCM7315_BBX)
+	strncpy(&system_utsname.machine[0],"7315bbx",8);
+
+#elif defined(CONFIG_MIPS_BCM7317)
+	strncpy(&system_utsname.machine[0],"7317",5);
+
+#elif defined(CONFIG_MIPS_BCM7318)
+	strncpy(&system_utsname.machine[0],"7318",5);
+
+#elif defined(CONFIG_MIPS_BCM7319)
+	strncpy(&system_utsname.machine[0],"7319",5);
+
+#elif defined(CONFIG_MIPS_BCM7320)
+	strncpy(&system_utsname.machine[0],"7320",5);
+
+#elif defined(CONFIG_MIPS_BCM7327)
+	strncpy(&system_utsname.machine[0],"7327",5);
+
+#elif defined(CONFIG_MIPS_BCM7328)
+	strncpy(&system_utsname.machine[0],"7328",5);
+
+#elif defined(CONFIG_MIPS_BCM7329)
+	strncpy(&system_utsname.machine[0],"7329",5);
+
+#elif defined(CONFIG_MIPS_BCM7400A0)
+	
+    #if defined(CONFIG_MIPS_BCM97456)
+    strncpy(&system_utsname.machine[0],"97456",6);
+    #else
+    strncpy(&system_utsname.machine[0],"7400a0",7);
+    #endif
+
+#elif defined(CONFIG_MIPS_BCM7400B0)
+
+    #if defined(CONFIG_MIPS_BCM97456B0)
+    strncpy(&system_utsname.machine[0],"97456b0",8);
+
+    #else
+    strncpy(&system_utsname.machine[0],"7400b0",7);
+    #endif
+
+
+#elif defined(CONFIG_MIPS_BCM7401A0)
+
+    #if defined(CONFIG_MIPS_BCM97455)
+    strncpy(&system_utsname.machine[0],"97455",6);
+    #else
+    strncpy(&system_utsname.machine[0],"7401a0",7);
+    #endif
+
+#elif defined(CONFIG_MIPS_BCM7401B0)
+
+    #if defined(CONFIG_MIPS_BCM97455B0)
+    strncpy(&system_utsname.machine[0],"97455b0",8);
+    #else
+    strncpy(&system_utsname.machine[0],"7401b0",7);
+    #endif
+
+#elif defined(CONFIG_MIPS_BCM7401C0)
+	// Use C0 instead of CX to pickup NAND
+    #if defined(CONFIG_MIPS_BCM97455C0)
+    strncpy(&system_utsname.machine[0],"97455c0",8);
+    #else
+    strncpy(&system_utsname.machine[0],"7401c0",7);
+    #endif
+
+#elif defined(CONFIG_MIPS_BCM7402S)
+	strncpy(&system_utsname.machine[0],"7402s",6);
+
+#elif defined(CONFIG_MIPS_BCM7402)
+    #if defined(CONFIG_MIPS_BCM7402C0)
+    strncpy(&system_utsname.machine[0],"7402c0",7);
+    #elif defined(CONFIG_MIPS_BCM7402B0)
+    strncpy(&system_utsname.machine[0],"7402b0",7);
+    #else
+    strncpy(&system_utsname.machine[0],"7402",5);
+    #endif
+
+
+
+#elif defined(CONFIG_MIPS_BCM7403A0)
+    
+    #if defined(CONFIG_MIPS_BCM97458A0)
+    strncpy(&system_utsname.machine[0],"97458a0",8);
+    #else
+    strncpy(&system_utsname.machine[0],"7403a0",7);
+    #endif
+
+
+#elif defined(CONFIG_MIPS_BCM7452A0)
+	strncpy(&system_utsname.machine[0],"7452a0",7);
+
+#elif defined(CONFIG_MIPS_BCM7440A0)
+	strncpy(&system_utsname.machine[0],"7440a0",7);
+#elif defined(CONFIG_MIPS_BCM7440B0)
+        strncpy(&system_utsname.machine[0],"7440b0",7);
+
+#elif defined(CONFIG_BCM93730)
+	strncpy(&system_utsname.machine[0],"93730",6);
+
+#endif
+
+#ifdef CONFIG_MTD_BRCMNAND
+	strcat(&system_utsname.machine[0],"-nand");
+#endif
+
+#ifdef CONFIG_SMP
+    strcat(&system_utsname.machine[0],"-smp");
+#endif
+
 	if (copy_to_user(name,&system_utsname,sizeof *name))
 		errno = -EFAULT;
 	up_read(&uts_sem);

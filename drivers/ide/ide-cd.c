@@ -2214,6 +2214,10 @@ static int cdrom_read_toc(ide_drive_t *drive, struct request_sense *sense)
 	if (toc == NULL) {
 		/* Try to allocate space. */
 		toc = (struct atapi_toc *) kmalloc (sizeof (struct atapi_toc),
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7400 )
+                                                    GFP_DMA |
+#endif
+
 						    GFP_KERNEL);
 		info->toc = toc;
 		if (toc == NULL) {
@@ -2273,7 +2277,7 @@ static int cdrom_read_toc(ide_drive_t *drive, struct request_sense *sense)
 		   If we get an error for the regular case, we assume
 		   a CDI without additional audio tracks. In this case
 		   the readable TOC is empty (CDI tracks are not included)
-		   and only holds the Leadout entry. Heiko Eißfeldt */
+		   and only holds the Leadout entry. Heiko Eifeldt */
 		ntracks = 0;
 		stat = cdrom_read_tocentry(drive, CDROM_LEADOUT, 1, 0,
 					   (char *)&toc->hdr,
@@ -3351,6 +3355,10 @@ static int idecd_open(struct inode * inode, struct file * file)
 
 	if (!info->buffer)
 		info->buffer = kmalloc(SECTOR_BUFFER_SIZE,
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+                                        GFP_DMA |
+#endif
+
 					GFP_KERNEL|__GFP_REPEAT);
         if (!info->buffer || (rc = cdrom_open(&info->devinfo, inode, file)))
 		drive->usage--;
@@ -3442,7 +3450,11 @@ static int ide_cd_probe(struct device *dev)
 		printk(KERN_INFO "ide-cd: passing drive %s to ide-scsi emulation.\n", drive->name);
 		goto failed;
 	}
-	info = (struct cdrom_info *) kmalloc (sizeof (struct cdrom_info), GFP_KERNEL);
+	info = (struct cdrom_info *) kmalloc (sizeof (struct cdrom_info),
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+                                         GFP_DMA |
+#endif
+					 GFP_KERNEL);
 	if (info == NULL) {
 		printk(KERN_ERR "%s: Can't allocate a cdrom structure\n", drive->name);
 		goto failed;

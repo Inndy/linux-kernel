@@ -4,6 +4,8 @@
 #include <linux/compiler.h>
 #include <linux/types.h>
 
+#include <asm/posix_types.h>
+
 /*
  *	Berkeley style UIO structures	-	Alan Cox 1994.
  *
@@ -17,11 +19,18 @@
 /* A word of warning: Our uio structure will clash with the C library one (which is now obsolete). Remove the C
    library one from sys/uio.h if you have a very old library set */
 
+#ifndef _SYS_UIO_H
+#define _SYS_UIO_H
 struct iovec
 {
-	void __user *iov_base;	/* BSD uses caddr_t (1003.1g requires void *) */
+	void *iov_base; 	/* BSD uses caddr_t (1003.1g requires void *) */
+#ifdef USE__KERNEL__
 	__kernel_size_t iov_len; /* Must be size_t (1003.1g) */
+#else
+	size_t iov_len; /* Must be size_t (1003.1g) */
+#endif
 };
+#endif
 
 #ifdef __KERNEL__
 
@@ -35,7 +44,7 @@ struct kvec {
 /*
  *	UIO_MAXIOV shall be at least 16 1003.1g (5.4.1.1)
  */
- 
+
 #define UIO_FASTIOV	8
 #define UIO_MAXIOV	1024
 #if 0

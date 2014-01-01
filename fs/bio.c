@@ -501,7 +501,16 @@ struct bio *bio_copy_user(request_queue_t *q, unsigned long uaddr,
 		if (bytes > len)
 			bytes = len;
 
-		page = alloc_page(q->bounce_gfp | GFP_KERNEL);
+#ifdef CONFIG_DISCONTIGMEM
+/* JWF */
+                if ((q->bounce_gfp & GFP_DMA) == 0) {
+                        printk(KERN_WARNING "bio_copy_user:  bounce_gfp GFP_DMA not set q 0x%p\n", q);
+                        q->bounce_gfp |= GFP_DMA;
+                }
+#endif
+
+                page = alloc_page(q->bounce_gfp | GFP_KERNEL );
+
 		if (!page) {
 			ret = -ENOMEM;
 			break;
@@ -559,6 +568,7 @@ static struct bio *__bio_map_user(request_queue_t *q, struct block_device *bdev,
 	int ret, offset, i;
 	struct page **pages;
 	struct bio *bio;
+	int dump_once = 0;
 
 	/*
 	 * transfer and buffer must be aligned to at least hardsector
@@ -595,6 +605,21 @@ static struct bio *__bio_map_user(request_queue_t *q, struct block_device *bdev,
 
 		if (bytes > len)
 			bytes = len;
+
+#ifdef CONFIG_DISCONTIGMEM
+#if defined ( CONFIG_MIPS_BCM97438 )
+/* JWF */
+                if ((void *)pages[i] >= (void *)0xe0000000) {
+#elif defined ( CONFIG_MIPS_BCM7440 )
+                if ((void *)pages[i] >= (void *)0xd8000000) {
+#endif
+                        if (dump_once == 0) {
+                                printk(KERN_WARNING "__biod_map_user: page 0x%p\n", pages[i]);
+                                dump_once++;
+                                dump_stack();
+                        }
+                }
+#endif
 
 		/*
 		 * sorry...

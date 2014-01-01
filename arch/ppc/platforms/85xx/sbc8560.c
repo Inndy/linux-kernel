@@ -55,7 +55,6 @@
 #include <syslib/ppc85xx_common.h>
 #include <syslib/ppc85xx_setup.h>
 
-#ifdef CONFIG_SERIAL_8250
 static void __init
 sbc8560_early_serial_map(void)
 {
@@ -71,27 +70,34 @@ sbc8560_early_serial_map(void)
         uart_req.membase = ioremap(uart_req.mapbase, MPC85xx_UART0_SIZE);
 	uart_req.type = PORT_16650;
 
-#if defined(CONFIG_SERIAL_TEXT_DEBUG) || defined(CONFIG_KGDB)
-        gen550_init(0, &uart_req);
+#ifdef CONFIG_SERIAL_8250
+	if (early_serial_setup(&uart_req) != 0)
+		printk("Early serial init of port 0 failed\n");
 #endif
- 
-        if (early_serial_setup(&uart_req) != 0)
-                printk("Early serial init of port 0 failed\n");
- 
+#ifdef CONFIG_SERIAL_TEXT_DEBUG
+	gen550_init(0, &uart_req);
+#endif
+#ifdef CONFIG_KGDB_8250
+	kgdb8250_add_port(0, &uart_req);
+#endif
+
         /* Assume early_serial_setup() doesn't modify uart_req */
 	uart_req.line = 1;
         uart_req.mapbase = UARTB_ADDR;
         uart_req.membase = ioremap(uart_req.mapbase, MPC85xx_UART1_SIZE);
 	uart_req.irq = MPC85xx_IRQ_EXT10;
- 
-#if defined(CONFIG_SERIAL_TEXT_DEBUG) || defined(CONFIG_KGDB)
-        gen550_init(1, &uart_req);
+
+#ifdef CONFIG_SERIAL_8250
+	if (early_serial_setup(&uart_req) != 0)
+		printk("Early serial init of port 1 failed\n");
 #endif
- 
-        if (early_serial_setup(&uart_req) != 0)
-                printk("Early serial init of port 1 failed\n");
+#ifdef CONFIG_SERIAL_TEXT_DEBUG
+	gen550_init(1, &uart_req);
+#endif
+#ifdef CONFIG_KGDB_8250
+	kgdb8250_add_port(1, &uart_req);
+#endif
 }
-#endif
 
 /* ************************************************************************
  *
@@ -119,9 +125,7 @@ sbc8560_setup_arch(void)
 	/* setup PCI host bridges */
 	mpc85xx_setup_hose();
 #endif
-#ifdef CONFIG_SERIAL_8250
 	sbc8560_early_serial_map();
-#endif
 #ifdef CONFIG_SERIAL_TEXT_DEBUG
 	/* Invalidate the entry we stole earlier the serial ports
 	 * should be properly mapped */ 

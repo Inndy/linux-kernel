@@ -92,7 +92,7 @@ INTEVT  = 0xff000028
 MMU_TEA = 0xff00000c		! TLB Exception Address Register
 #endif
 
-#if defined(CONFIG_KGDB_NMI)
+#if defined(CONFIG_KGDB)
 NMI_VEC = 0x1c0			! Must catch early for debounce
 #endif
 
@@ -244,31 +244,33 @@ call_dae:
 2:	.long   do_address_error
 #endif /* CONFIG_MMU */
 
-#if defined(CONFIG_SH_STANDARD_BIOS) || defined(CONFIG_SH_KGDB)
+#if defined(CONFIG_SH_STANDARD_BIOS) || defined(CONFIG_KGDB)
 ! Handle kernel debug if either kgdb (SW) or gdb-stub (FW) is present.
 ! If both are configured, handle the debug traps (breakpoints) in SW,
 ! but still allow BIOS traps to FW.
 
 	.align	2
 debug_kernel:
-#if defined(CONFIG_SH_STANDARD_BIOS) && defined(CONFIG_SH_KGDB)
+#if defined(CONFIG_SH_STANDARD_BIOS) && defined(CONFIG_KGDB)
 	/* Force BIOS call to FW (debug_trap put TRA in r8) */
 	mov	r8,r0
 	shlr2	r0
 	cmp/eq	#0x3f,r0
 	bt	debug_kernel_fw
-#endif /* CONFIG_SH_STANDARD_BIOS && CONFIG_SH_KGDB */
+#endif /* CONFIG_SH_STANDARD_BIOS && CONFIG_KGDB */
 
-debug_enter:		
-#if defined(CONFIG_SH_KGDB)
+	.align 2
+	.globl debug_enter
+debug_enter:
+#if defined(CONFIG_KGDB)
 	/* Jump to kgdb, pass stacked regs as arg */
 debug_kernel_sw:
 	mov.l	3f, r0
 	jmp	@r0
 	 mov	r15, r4
 	.align	2
-3:	.long	kgdb_handle_exception
-#endif /* CONFIG_SH_KGDB */
+3:	.long	kgdb_exception_handler
+#endif /* CONFIG_KGDB */
 
 #if defined(CONFIG_SH_STANDARD_BIOS)
 	/* Unwind the stack and jmp to the debug entry */
@@ -310,12 +312,12 @@ debug_kernel_fw:
 2:	.long	gdb_vbr_vector
 #endif /* CONFIG_SH_STANDARD_BIOS */
 
-#endif /* CONFIG_SH_STANDARD_BIOS || CONFIG_SH_KGDB */
+#endif /* CONFIG_SH_STANDARD_BIOS || CONFIG_KGDB */
 
 
 	.align	2
-debug_trap:	
-#if defined(CONFIG_SH_STANDARD_BIOS) || defined(CONFIG_SH_KGDB)
+debug_trap:
+#if defined(CONFIG_SH_STANDARD_BIOS) || defined(CONFIG_KGDB)
 	mov	#OFF_SR, r0
 	mov.l	@(r0,r15), r0		! get status register
 	shll	r0
@@ -659,7 +661,7 @@ skip_restore:
 6:	or	k0, k2			! Set the IMASK-bits
 	ldc	k2, ssr
 	!
-#if defined(CONFIG_KGDB_NMI)
+#if defined(CONFIG_KGDB)
 	! Clear in_nmi
 	mov.l	4f, k0
 	mov	#0, k1
@@ -711,7 +713,7 @@ tlb_miss:
 interrupt:
 	mov.l	2f, k2
 	mov.l	3f, k3
-#if defined(CONFIG_KGDB_NMI)
+#if defined(CONFIG_KGDB)
 	! Debounce (filter nested NMI)
 	mov.l	@k2, k0
 	mov.l	5f, k1
@@ -726,7 +728,7 @@ interrupt:
 5:	.long	NMI_VEC
 6:	.long	in_nmi
 0:
-#endif /* defined(CONFIG_KGDB_NMI) */
+#endif /* defined(CONFIG_KGDB) */
 	bra	handle_exception
 	 mov.l	@k2, k2
 

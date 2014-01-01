@@ -258,7 +258,20 @@ void blk_queue_make_request(request_queue_t * q, make_request_fn * mfn)
 	/*
 	 * by default assume old behaviour and bounce for any highmem page
 	 */
+#if defined (CONFIG_MIPS_BCM97438) || defined (CONFIG_MIPS_BCM7440)
+	/* JWF 
+	 * it is not clear that we want to do this here, as it would make 
+	 * the ramdisk driver do bounce buffer IO
+	 */
+#if 0
+	printk(" blk_queue_make_request: blk_init_queue: limit DMA buffers to lower memory bank\n");
+#endif
+
+	/*  Limit DMA to lower 256MB bank */
+	blk_queue_bounce_limit(q, (u64) LOWER_RAM_END - 1);
+#else
 	blk_queue_bounce_limit(q, BLK_BOUNCE_HIGH);
+#endif
 
 	blk_queue_activity_fn(q, NULL, NULL);
 
@@ -284,6 +297,9 @@ static inline void rq_init(request_queue_t *q, struct request *rq)
 	rq->sense = NULL;
 	rq->end_io = NULL;
 	rq->end_io_data = NULL;
+#if defined (CONFIG_MIPS_BCM7440)
+	clear_bit(__REQ_DIRECTIO, &rq->flags);
+#endif
 }
 
 /**
@@ -526,6 +542,11 @@ void blk_queue_bounce_limit(request_queue_t *q, u64 dma_addr)
 	 * ISA has its own < 16MB zone.
 	 */
 	if (bounce_pfn < blk_max_low_pfn) {
+#if 0
+		printk(KERN_WARNING "blk_queue_bounce_limit: setting GFP_DMA" 
+				" bounce_pfn 0x%08lx  blk_max_low_pfn 0x%08lx q 0x%p\n",
+			   bounce_pfn, blk_max_low_pfn, q);
+#endif
 		BUG_ON(dma_addr < BLK_BOUNCE_ISA);
 		init_emergency_isa_pool();
 		q->bounce_gfp = GFP_NOIO | GFP_DMA;
@@ -1056,6 +1077,12 @@ static char *rq_flags[] = {
 	"REQ_PM_SUSPEND",
 	"REQ_PM_RESUME",
 	"REQ_PM_SHUTDOWN",
+	"REQ_BAR_PREFLUSH",
+	"REQ_BAR_POSTFLUSH",
+	"REQ_BAR_FLUSH",
+#if defined (CONFIG_MIPS_BCM7440)
+	"REQ_DIRECTIO",
+#endif
 };
 
 void blk_dump_rq_flags(struct request *rq, char *msg)
@@ -1259,6 +1286,21 @@ static inline int ll_new_mergeable(request_queue_t *q,
 		return 0;
 	}
 
+#if defined (CONFIG_MIPS_BCM7440)
+	/* Cannot merge directIO to non-directIO requests */
+	if (q->last_merge) {
+		if (test_bit(__REQ_DIRECTIO, &q->last_merge->flags) !=
+			test_bit(__REQ_DIRECTIO, &req->flags) ) {
+
+			printk("%s: Cannot merge __REQ_DIRECTIO to non-directIO request\n", __FUNCTION__);
+			req->flags |= REQ_NOMERGE;
+			if (req == q->last_merge)
+				q->last_merge = NULL;
+			return 0;
+		}
+	}
+#endif
+
 	/*
 	 * A hw segment is just getting larger, bump just the phys
 	 * counter.
@@ -1281,6 +1323,21 @@ static inline int ll_new_hw_segment(request_queue_t *q,
 			q->last_merge = NULL;
 		return 0;
 	}
+
+#if defined (CONFIG_MIPS_BCM7440)
+	/* Cannot merge directIO to non-directIO requests */
+	if (q->last_merge) {
+		if (test_bit(__REQ_DIRECTIO, &q->last_merge->flags) !=
+			test_bit(__REQ_DIRECTIO, &req->flags) ) {
+
+			printk("%s: Cannot merge __REQ_DIRECTIO to non-directIO request\n", __FUNCTION__);
+			req->flags |= REQ_NOMERGE;
+			if (req == q->last_merge)
+				q->last_merge = NULL;
+			return 0;
+		}
+	}
+#endif
 
 	/*
 	 * This will form the start of a new hw segment.  Bump both
@@ -1367,6 +1424,15 @@ static int ll_merge_requests_fn(request_queue_t *q, struct request *req,
 	 */
 	if (req->special || next->special)
 		return 0;
+
+#if defined (CONFIG_MIPS_BCM7440)
+	/* Cannot merge directIO to non-directIO requests */
+	if (test_bit(__REQ_DIRECTIO, &req->flags) !=
+		test_bit(__REQ_DIRECTIO, &next->flags) ) {
+		printk("%s: Cannot merge __REQ_DIRECTIO to non-directIO request\n", __FUNCTION__);
+		return 0;
+	}
+#endif
 
 	/*
 	 * Will it become to large?
@@ -2478,6 +2544,15 @@ static int attempt_merge(request_queue_t *q, struct request *req,
 	    || next->waiting || next->special)
 		return 0;
 
+#if defined (CONFIG_MIPS_BCM7440)
+	/* Cannot merge directIO to non-directO requests */
+	if (test_bit(__REQ_DIRECTIO, &req->flags) !=
+		test_bit(__REQ_DIRECTIO, &next->flags) ) {
+		printk("%s: Cannot merge __REQ_DIRECTIO to non-directIO request\n", __FUNCTION__);
+		return 0;
+	}
+#endif
+
 	/*
 	 * If we are allowed to merge, then append bio list
 	 * from next to rq and release next. merge_requests_fn
@@ -2615,6 +2690,12 @@ again:
 			req->biotail->bi_next = bio;
 			req->biotail = bio;
 			req->nr_sectors = req->hard_nr_sectors += nr_sectors;
+#if defined (CONFIG_MIPS_BCM7440)
+			if (test_bit(BIO_DIRECT, &bio->bi_flags)) {
+				printk("%s: ELEVATOR_BACK_MERGE, BIO_DIRECT->__REQ_DIRECTIO\n", __FUNCTION__);
+				set_bit(__REQ_DIRECTIO, &req->flags);
+			}
+#endif
 			drive_stat_acct(req, nr_sectors, 0);
 			if (!attempt_back_merge(q, req))
 				elv_merged_request(q, req);
@@ -2639,6 +2720,12 @@ again:
 			req->hard_cur_sectors = cur_nr_sectors;
 			req->sector = req->hard_sector = sector;
 			req->nr_sectors = req->hard_nr_sectors += nr_sectors;
+#if defined (CONFIG_MIPS_BCM7440)
+			if (test_bit(BIO_DIRECT, &bio->bi_flags)) {
+				printk("%s: ELEVATOR_FRONT_MERGE, BIO_DIRECT->__REQ_DIRECTIO\n", __FUNCTION__);
+				set_bit(__REQ_DIRECTIO, &req->flags);
+			}
+#endif
 			drive_stat_acct(req, nr_sectors, 0);
 			if (!attempt_front_merge(q, req))
 				elv_merged_request(q, req);
@@ -2704,6 +2791,10 @@ get_rq:
 	req->bio = req->biotail = bio;
 	req->rq_disk = bio->bi_bdev->bd_disk;
 	req->start_time = jiffies;
+#if defined (CONFIG_MIPS_BCM7440)
+	if (test_bit(BIO_DIRECT, &bio->bi_flags))
+		set_bit(__REQ_DIRECTIO, &req->flags);
+#endif
 
 	add_request(q, req);
 out:
@@ -2877,7 +2968,11 @@ void generic_make_request(struct bio *bio)
 
 	might_sleep();
 	/* Test device or partition size, when known. */
+#if defined (CONFIG_MIPS_BCM7440)
+	maxsector = bio->bi_bdev->bd_disk->capacity;
+#else
 	maxsector = bio->bi_bdev->bd_inode->i_size >> 9;
+#endif
 	if (maxsector) {
 		sector_t sector = bio->bi_sector;
 
@@ -2887,6 +2982,11 @@ void generic_make_request(struct bio *bio)
 			 * without checking the size of the device, e.g., when
 			 * mounting a device.
 			 */
+#if defined (CONFIG_MIPS_BCM7440)
+			printk("%s: BAD REQUEST - maxsector 0x%x, nr_sectors 0x%x, sector 0x%x, cap 0x%x, inode calc 0x%x\n",
+				__FUNCTION__, maxsector, nr_sectors, sector,
+				bio->bi_bdev->bd_disk->capacity, (bio->bi_bdev->bd_inode->i_size >> 9));
+#endif
 			handle_bad_sector(bio);
 			goto end_io;
 		}
@@ -3279,8 +3379,13 @@ int __init blk_dev_init(void)
 	iocontext_cachep = kmem_cache_create("blkdev_ioc",
 			sizeof(struct io_context), 0, SLAB_PANIC, NULL, NULL);
 
+#if defined (CONFIG_MIPS_BCM97438) || defined (CONFIG_MIPS_BCM7440)
+	/* BCM97438 and other Hydra architecture can only do DMA up to 256MB */
+	blk_max_low_pfn = blk_max_pfn = (LOWER_RAM_END >> PAGE_SHIFT);
+#else
 	blk_max_low_pfn = max_low_pfn;
 	blk_max_pfn = max_pfn;
+#endif
 
 	return 0;
 }

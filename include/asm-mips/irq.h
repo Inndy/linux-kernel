@@ -18,17 +18,23 @@ static inline int irq_canonicalize(int irq)
 {
 	return ((irq == 2) ? 9 : irq);
 }
+
+struct irqaction;
+extern int i8259_setup_irq(int irq, struct irqaction * new);
+extern void enable_8259A_irq(unsigned int irq);
+
 #else
 #define irq_canonicalize(irq) (irq)	/* Sane hardware, sane code ... */
+
+struct irqaction;
+
 #endif
 
 struct pt_regs;
 
-#ifdef CONFIG_PREEMPT
-
 extern asmlinkage unsigned int do_IRQ(unsigned int irq, struct pt_regs *regs);
 
-#else
+#ifdef CONFIG_PREEMPT
 
 /*
  * do_IRQ handles all normal device IRQ's (the special

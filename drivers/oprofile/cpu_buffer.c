@@ -247,7 +247,7 @@ void oprofile_add_sample(struct pt_regs * const regs, unsigned long event)
 	/* if log_sample() fail we can't backtrace since we lost the source
 	 * of this event */
 	if (log_sample(cpu_buf, pc, is_kernel, event))
-		oprofile_ops.backtrace(regs, backtrace_depth);
+		oprofile_ops->backtrace(regs, backtrace_depth);
 	oprofile_end_trace(cpu_buf);
 }
 

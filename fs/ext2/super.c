@@ -304,6 +304,23 @@ static int parse_options (char * options,
 	if (!options)
 		return 1;
 
+	/* PR 28089 - If FS is mounted uncleanly, or is corrupted,
+	 * then current behaviour is a forced mount READ-ONLY.
+	 * The user must fsck before mounting RW.
+	 * This was deemed unacceptable by David Ericsen.
+	 * It is noteworthy to mention that a previous PR24022 complained
+	 * that: "The mount command in busybox/unix-utils mounts a dirty ext2
+	 * fs RW."
+	 * This file was fixed to prevent mount of dirty ext2 FS in RW mode.
+	 * This fix was deemed unacceptable by David Ericksen, who said he
+	 * wanted a way to still allow the user to mount a dirt FS rw, and
+	 * thus this fix for PR 28089.
+	 */
+	if (!(sbi->s_mount_state & EXT2_VALID_FS) ||
+	     (sbi->s_mount_state & EXT2_ERROR_FS)) {
+		set_opt(sbi->s_mount_opt, CHECK);
+	}
+
 	while ((p = strsep (&options, ",")) != NULL) {
 		int token;
 		if (!*p)
@@ -421,21 +438,55 @@ static int ext2_setup_super (struct super_block * sb,
 	}
 	if (read_only)
 		return res;
-	if (!(sbi->s_mount_state & EXT2_VALID_FS))
-		printk ("EXT2-fs warning: mounting unchecked fs, "
-			"running e2fsck is recommended\n");
-	else if ((sbi->s_mount_state & EXT2_ERROR_FS))
-		printk ("EXT2-fs warning: mounting fs with errors, "
-			"running e2fsck is recommended\n");
+	/* PR 28089 - Allow user to turn off a forced fsck in order
+	 * to let user to mount a dirty FS RW
+	 * Thus if FS is dirty and nocheck is the mount option, then
+	 * FS is mounted RW.
+	 */
+	if (!(sbi->s_mount_state & EXT2_VALID_FS)) {
+		if (!test_opt (sb, CHECK))
+			printk ("EXT2-fs warning: mounting unclean fs with "
+			"errors in RW mode.\nRunning e2fsck is strongly urged "
+			"and recommended.\n");
+		else {
+			printk ("EXT2-fs warning: mounting unchecked fs read-only. "
+			"Running e2fsck is recommended before re-mounting read-write.\n");
+			sb->s_flags |= MS_RDONLY;
+			return MS_RDONLY;
+		}
+	}
+	/* PR 28089 - Allow user to turn off a forced fsck in order
+	 * to let user to mount a dirty FS RW.
+	 * Thus if FS is dirty and nocheck is the mount option, then
+	 * FS is mounted RW.
+	 */
+	else if ((sbi->s_mount_state & EXT2_ERROR_FS)) {
+		if (!test_opt (sb, CHECK))
+			printk ("EXT2-fs warning: mounting unclean fs with "
+			"errors in RW mode.\nRunning e2fsck is strongly urged "
+			"and recommended.\n");
+		else {
+			printk ("EXT2-fs warning: mounting unchecked fs read-only. "
+			"Running e2fsck is recommended before re-mounting read-write.\n");
+			sb->s_flags |= MS_RDONLY;
+			return MS_RDONLY;
+		}
+	}
 	else if ((__s16) le16_to_cpu(es->s_max_mnt_count) >= 0 &&
 		 le16_to_cpu(es->s_mnt_count) >=
-		 (unsigned short) (__s16) le16_to_cpu(es->s_max_mnt_count))
-		printk ("EXT2-fs warning: maximal mount count reached, "
-			"running e2fsck is recommended\n");
+		 (unsigned short) (__s16) le16_to_cpu(es->s_max_mnt_count)) {
+		printk ("EXT2-fs warning: maximal mount count reached. Mounting read-only. "
+			"Running e2fsck is recommended before re-mounting read-write.\n");
+		sb->s_flags |= MS_RDONLY;
+		return MS_RDONLY;
+	}
 	else if (le32_to_cpu(es->s_checkinterval) &&
-		(le32_to_cpu(es->s_lastcheck) + le32_to_cpu(es->s_checkinterval) <= get_seconds()))
-		printk ("EXT2-fs warning: checktime reached, "
-			"running e2fsck is recommended\n");
+		(le32_to_cpu(es->s_lastcheck) + le32_to_cpu(es->s_checkinterval) <= get_seconds())) {
+		printk ("EXT2-fs warning: checktime reached. Mounting read-only. "
+			"Running e2fsck is recommended before re-mounting read-write.\n");
+		sb->s_flags |= MS_RDONLY;
+		return MS_RDONLY;
+	}
 	if (!le16_to_cpu(es->s_max_mnt_count))
 		es->s_max_mnt_count = cpu_to_le16(EXT2_DFL_MAX_MNT_COUNT);
 	es->s_mnt_count=cpu_to_le16(le16_to_cpu(es->s_mnt_count) + 1);
@@ -1157,3 +1208,4 @@ static void __exit exit_ext2_fs(void)
 
 module_init(init_ext2_fs)
 module_exit(exit_ext2_fs)
+

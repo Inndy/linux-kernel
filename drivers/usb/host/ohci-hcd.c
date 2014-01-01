@@ -84,7 +84,14 @@
 
 #include <linux/module.h>
 #include <linux/moduleparam.h>
-#include <linux/pci.h>
+
+#ifdef CONFIG_USB_BRCM
+  #define OHCI_BRCM
+  #undef CONFIG_PCI
+#else
+  #include <linux/pci.h>
+#endif
+
 #include <linux/kernel.h>
 #include <linux/delay.h>
 #include <linux/ioport.h>
@@ -96,6 +103,18 @@
 #include <linux/timer.h>
 #include <linux/list.h>
 #include <linux/interrupt.h>  /* for in_interrupt () */
+
+
+#ifdef CONFIG_USB_BRCM
+
+#ifdef CONFIG_PM
+#undef CONFIG_PM
+#endif
+
+#include "brcmusb.h"		//MUST be included before "usb-ohci.h"
+
+#endif
+
 #include <linux/usb.h>
 #include <linux/usb_otg.h>
 #include "../core/hcd.h"
@@ -901,16 +920,16 @@ MODULE_LICENSE ("GPL");
 #include "ohci-lh7a404.c"
 #endif
 
-#ifdef CONFIG_PXA27x
-#include "ohci-pxa27x.c"
-#endif
-
 #ifdef CONFIG_SOC_AU1X00
 #include "ohci-au1xxx.c"
 #endif
 
 #ifdef CONFIG_USB_OHCI_HCD_PPC_SOC
 #include "ohci-ppc-soc.c"
+#endif
+
+#if defined( CONFIG_USB_BRCM ) //&& !defined(CONFIG_USB_EHCI_HCD)
+#include "ohci-brcm.c"
 #endif
 
 #if !(defined(CONFIG_PCI) \
@@ -920,6 +939,7 @@ MODULE_LICENSE ("GPL");
       || defined (CONFIG_PXA27x) \
       || defined (CONFIG_SOC_AU1X00) \
       || defined (CONFIG_USB_OHCI_HCD_PPC_SOC) \
+      || defined(CONFIG_USB_BRCM) \
 	)
 #error "missing bus glue for ohci-hcd"
 #endif

@@ -347,6 +347,9 @@ static void sanitize_format(union cdrom_addr *addr,
 static int mmc_ioctl(struct cdrom_device_info *cdi, unsigned int cmd,
 		     unsigned long arg);
 
+#if defined (CONFIG_MIPS_BCM7440)
+int cdrom_read_capacity(struct cdrom_device_info *, long *);
+#endif
 int cdrom_get_last_written(struct cdrom_device_info *, long *);
 static int cdrom_get_next_writable(struct cdrom_device_info *, long *);
 static void cdrom_count_tracks(struct cdrom_device_info *, tracktype*);
@@ -1274,7 +1277,12 @@ static int cdrom_slot_status(struct cdrom_device_info *cdi, int slot)
 	if (cdi->sanyo_slot)
 		return CDS_NO_INFO;
 	
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	info = kmalloc(sizeof(*info), GFP_KERNEL | GFP_DMA);
+#else
 	info = kmalloc(sizeof(*info), GFP_KERNEL);
+#endif
+
 	if (!info)
 		return -ENOMEM;
 
@@ -1304,7 +1312,12 @@ int cdrom_number_of_slots(struct cdrom_device_info *cdi)
 	/* cdrom_read_mech_status requires a valid value for capacity: */
 	cdi->capacity = 0; 
 
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	info = kmalloc(sizeof(*info), GFP_KERNEL | GFP_DMA);
+#else
 	info = kmalloc(sizeof(*info), GFP_KERNEL);
+#endif
+
 	if (!info)
 		return -ENOMEM;
 
@@ -1362,7 +1375,12 @@ static int cdrom_select_disc(struct cdrom_device_info *cdi, int slot)
 		return cdrom_load_unload(cdi, -1);
 	}
 
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	info = kmalloc(sizeof(*info), GFP_KERNEL | GFP_DMA);
+#else
 	info = kmalloc(sizeof(*info), GFP_KERNEL);
+#endif
+
 	if (!info)
 		return -ENOMEM;
 
@@ -1810,7 +1828,11 @@ static int dvd_read_disckey(struct cdrom_device_info *cdi, dvd_struct *s)
 
 	size = sizeof(s->disckey.value) + 4;
 
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	if ((buf = (u_char *) kmalloc(size, GFP_KERNEL | GFP_DMA )) == NULL)
+#else
 	if ((buf = (u_char *) kmalloc(size, GFP_KERNEL)) == NULL)
+#endif
 		return -ENOMEM;
 
 	init_cdrom_command(&cgc, buf, size, CGC_DATA_READ);
@@ -1861,7 +1883,11 @@ static int dvd_read_manufact(struct cdrom_device_info *cdi, dvd_struct *s)
 
 	size = sizeof(s->manufact.value) + 4;
 
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	if ((buf = (u_char *) kmalloc(size, GFP_KERNEL | GFP_DMA )) == NULL)
+#else
 	if ((buf = (u_char *) kmalloc(size, GFP_KERNEL)) == NULL)
+#endif
 		return -ENOMEM;
 
 	init_cdrom_command(&cgc, buf, size, CGC_DATA_READ);
@@ -2049,7 +2075,11 @@ static int cdrom_read_cdda_old(struct cdrom_device_info *cdi, __u8 __user *ubuf,
 	 */
 	nr = nframes;
 	do {
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+		cgc.buffer = kmalloc(CD_FRAMESIZE_RAW * nr, GFP_KERNEL | GFP_DMA );
+#else
 		cgc.buffer = kmalloc(CD_FRAMESIZE_RAW * nr, GFP_KERNEL);
+#endif
 		if (cgc.buffer)
 			break;
 
@@ -2277,7 +2307,11 @@ int cdrom_ioctl(struct file * file, struct cdrom_device_info *cdi,
 		if ((unsigned int)arg >= cdi->capacity)
 			return -EINVAL;
 
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+		info = kmalloc(sizeof(*info), GFP_KERNEL | GFP_DMA);
+#else
 		info = kmalloc(sizeof(*info), GFP_KERNEL);
+#endif
 		if (!info)
 			return -ENOMEM;
 
@@ -2655,7 +2689,11 @@ static int mmc_ioctl(struct cdrom_device_info *cdi, unsigned int cmd,
 		/* FIXME: we need upper bound checking, too!! */
 		if (lba < 0)
 			return -EINVAL;
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+		cgc.buffer = (char *) kmalloc(blocksize, GFP_KERNEL | GFP_DMA);
+#else
 		cgc.buffer = (char *) kmalloc(blocksize, GFP_KERNEL);
+#endif
 		if (cgc.buffer == NULL)
 			return -ENOMEM;
 		memset(&sense, 0, sizeof(sense));
@@ -2837,7 +2875,11 @@ static int mmc_ioctl(struct cdrom_device_info *cdi, unsigned int cmd,
 		int size = sizeof(dvd_struct);
 		if (!CDROM_CAN(CDC_DVD))
 			return -ENOSYS;
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+		if ((s = (dvd_struct *) kmalloc(size, GFP_KERNEL | GFP_DMA)) == NULL)
+#else
 		if ((s = (dvd_struct *) kmalloc(size, GFP_KERNEL)) == NULL)
+#endif
 			return -ENOMEM;
 		cdinfo(CD_DO_IOCTL, "entering DVD_READ_STRUCT\n"); 
 		if (copy_from_user(s, (dvd_struct __user *)arg, size)) {
@@ -2877,8 +2919,13 @@ static int mmc_ioctl(struct cdrom_device_info *cdi, unsigned int cmd,
 	case CDROM_LAST_WRITTEN: {
 		long last = 0;
 		cdinfo(CD_DO_IOCTL, "entering CDROM_LAST_WRITTEN\n"); 
+#if defined (CONFIG_MIPS_BCM7440)
+		if ((ret = cdrom_read_capacity(cdi, &last)))
+			return ret;
+#else
 		if ((ret = cdrom_get_last_written(cdi, &last)))
 			return ret;
+#endif
 		IOCTL_OUT(arg, long, last);
 		return 0;
 		}
@@ -2951,6 +2998,36 @@ static int cdrom_get_disc_info(struct cdrom_device_info *cdi, disc_information *
 	/* return actual fill size */
 	return buflen;
 }
+
+#if defined (CONFIG_MIPS_BCM7440)
+/*
+** Return the capacity of the media. This is for the UDF filesystem.
+*/
+int cdrom_read_capacity(struct cdrom_device_info *cdi, long *capacity)
+{
+	struct {
+		__u32 lba;
+		__u32 blocklen;
+	} capbuf;
+
+	struct cdrom_device_ops  *cdo = cdi->ops;
+	struct cdrom_generic_command cgc;
+	struct request_sense sense;
+	int ret;
+
+	init_cdrom_command(&cgc, (char *)&capbuf, sizeof(capbuf), CGC_DATA_READ);
+	cgc.quiet = 0;
+	cgc.cmd[0] = GPCMD_READ_CDVD_CAPACITY;
+
+	ret = cdo->generic_packet(cdi, &cgc);
+	if (ret == 0)
+		*capacity = 1 + be32_to_cpu(capbuf.lba);
+	else 
+		*capacity = 0;
+
+	return ret;
+}
+#endif
 
 /* return the last written block on the CD-R media. this is for the udf
    file system. */

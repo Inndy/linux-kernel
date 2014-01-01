@@ -411,10 +411,19 @@ void ide_toggle_bounce(ide_drive_t *drive, int on)
 	u64 addr = BLK_BOUNCE_HIGH;	/* dma64_addr_t */
 
 	if (on && drive->media == ide_disk) {
+#ifdef CONFIG_BLK_DEV_IDE_BCM7XXX
+		addr = BLK_BOUNCE_ANY;
+#else
 		if (!PCI_DMA_BUS_IS_PHYS)
 			addr = BLK_BOUNCE_ANY;
 		else if (HWIF(drive)->pci_dev)
-			addr = HWIF(drive)->pci_dev->dma_mask;
+    #if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+                        addr =  (u64) LOWER_RAM_END - 1;
+    #else
+                        addr = HWIF(drive)->pci_dev->dma_mask;
+    #endif
+
+#endif
 	}
 
 	if (drive->queue)

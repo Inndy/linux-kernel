@@ -1313,6 +1313,15 @@ M:	rml@novell.com
 L:	linux-kernel@vger.kernel.org
 S:	Maintained
 
+KGDB
+P:	Tom Rini
+P:	Amit S. Kale
+M:	trini@kernel.crashing.org
+M:	amitkale@linsyssoft.com
+W:	http://sourceforge.net/projects/kgdb
+L:	kgdb-bugreport@lists.sourceforge.net
+S:	Maintained
+
 LANMEDIA WAN CARD DRIVER
 P:	Andrew Stanley-Jones
 M:	asj@lanmedia.com

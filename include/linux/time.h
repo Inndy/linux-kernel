@@ -15,15 +15,21 @@ struct timespec {
 };
 #endif /* _STRUCT_TIMESPEC */
 
+#ifndef _STRUCT_TIMEVAL
+#define _STRUCT_TIMEVAL
 struct timeval {
 	time_t		tv_sec;		/* seconds */
 	suseconds_t	tv_usec;	/* microseconds */
 };
+#endif
 
+#ifndef _STRUCT_TIMEZONE
+#define _STRUCT_TIMEZONE
 struct timezone {
 	int	tz_minuteswest;	/* minutes west of Greenwich */
 	int	tz_dsttime;	/* type of dst correction */
 };
+#endif
 
 #ifdef __KERNEL__
 
@@ -139,15 +145,21 @@ set_normalized_timespec (struct timespec *ts, time_t sec, long nsec)
 #define	ITIMER_VIRTUAL	1
 #define	ITIMER_PROF	2
 
+#ifndef _STRUCT_ITIMERSPEC
+#define _STRUCT_ITIMERSPEC
 struct  itimerspec {
         struct  timespec it_interval;    /* timer period */
         struct  timespec it_value;       /* timer expiration */
 };
+#endif
 
+#ifndef _STRUCT_ITIMERVAL
+#define _STRUCT_ITIMERVAL
 struct	itimerval {
 	struct	timeval it_interval;	/* timer interval */
 	struct	timeval it_value;	/* current value */
 };
+#endif
 
 
 /*

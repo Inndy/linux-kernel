@@ -227,6 +227,10 @@ extern void netdev_unregister_sysfs(struct net_device *);
 #define	netdev_unregister_sysfs(dev)	do { } while(0)
 #endif
 
+/* PR20221: netif_dma patch */
+#ifdef  CONFIG_NETIF_DMA_MODULE
+#define CONFIG_NETIF_DMA
+#endif
 
 /*******************************************************************************
 
@@ -1161,6 +1165,11 @@ int __skb_linearize(struct sk_buff *skb, int gfp_mask)
 
 	size = skb->end - skb->head + expand;
 	size = SKB_DATA_ALIGN(size);
+
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	gfp_mask |= GFP_DMA;
+#endif
+
 	data = kmalloc(size + sizeof(struct skb_shared_info), gfp_mask);
 	if (!data)
 		return -ENOMEM;
@@ -1427,6 +1436,17 @@ static void sample_queue(unsigned long dummy)
 }
 #endif
 
+#ifdef  CONFIG_NETIF_DMA
+static int (*netif_rx_hook)(struct sk_buff *skb) = NULL;
+
+int netif_rx_sethook(int (*hook)(struct sk_buff *skb))
+{
+   netif_rx_hook = hook;
+   return 0;
+}
+
+EXPORT_SYMBOL(netif_rx_sethook);
+#endif
 
 /**
  *	netif_rx	-	post buffer to the network code
@@ -1452,6 +1472,14 @@ int netif_rx(struct sk_buff *skb)
 	struct softnet_data *queue;
 	unsigned long flags;
 
+#ifdef  CONFIG_NETIF_DMA
+    if (netif_rx_hook) {
+        if (netif_rx_hook(skb)) {
+            return NET_RX_DROP;
+        }
+    }
+#endif    
+    
 	/* if netpoll wants it, pretend we never saw it */
 	if (netpoll_rx(skb))
 		return NET_RX_DROP;

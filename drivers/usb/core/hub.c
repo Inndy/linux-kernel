@@ -69,6 +69,11 @@ MODULE_PARM_DESC (blinkenlights, "true to cycle leds on hubs");
  * otherwise the new scheme is used.  If that fails and "use_both_schemes"
  * is set, then the driver will make another attempt, using the other scheme.
  */
+ 
+#if (HUMAX_MODIFY == y)
+extern int front_port_identified;
+extern int rear_port_identified;
+#endif
 static int old_scheme_first = 0;
 module_param(old_scheme_first, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(old_scheme_first,
@@ -1024,6 +1029,22 @@ void usb_disconnect(struct usb_device **pdev)
 	} else
 		down(&udev->serialize);
 
+#if (HUMAX_MODIFY == y)
+ 	printk("hee test: %s  %s\n",udev->dev.driver->name, udev->dev.bus_id); 
+	if(udev->dev.driver->name[0]=='u' && udev->dev.driver->name[1]=='s' && udev->dev.driver->name[2]=='b' &&
+		/*udev->dev.bus_id[0]=='1' &&*/ udev->dev.bus_id[1]=='-' && udev->dev.bus_id[2]=='1' )
+	{
+		rear_port_identified = 0;	
+		printk("hee_test: USB disconnected on REAR port  status(%d:%d)\n",front_port_identified, rear_port_identified);
+
+	}
+	else if(udev->dev.driver->name[0]=='u' && udev->dev.driver->name[1]=='s' && udev->dev.driver->name[2]=='b' &&
+		/*udev->dev.bus_id[0]=='1' &&*/ udev->dev.bus_id[1]=='-' && udev->dev.bus_id[2]=='2' )
+	{
+		front_port_identified = 0;	
+		printk("hee_test: USB disconnected on FRONT port  status(%d:%d)\n",front_port_identified, rear_port_identified);
+	}
+#endif
 	dev_info (&udev->dev, "USB disconnect, address %d\n", udev->devnum);
 
 	/* Free up all the children before we remove this device */
@@ -2162,7 +2183,23 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 	default:
 		goto fail;
 	}
- 
+	
+#if (HUMAX_MODIFY == y)
+ 	printk("hee test: %s  %s\n",udev->dev.driver->name, udev->dev.bus_id); 
+	if(udev->dev.driver->name[0]=='u' && udev->dev.driver->name[1]=='s' && udev->dev.driver->name[2]=='b' &&
+		/*udev->dev.bus_id[0]=='1' &&*/ udev->dev.bus_id[1]=='-' && udev->dev.bus_id[2]=='1' )
+	{
+		rear_port_identified = 1;	
+		printk("hee_test: USB connected on REAR port  status(%d:%d)\n",front_port_identified, rear_port_identified);
+
+	}
+	else if(udev->dev.driver->name[0]=='u' && udev->dev.driver->name[1]=='s' && udev->dev.driver->name[2]=='b' &&
+		/*udev->dev.bus_id[0]=='1' &&*/ udev->dev.bus_id[1]=='-' && udev->dev.bus_id[2]=='2' )
+	{
+		front_port_identified = 1;	
+		printk("hee_test: USB connected on FRONT port  status(%d:%d)\n",front_port_identified, rear_port_identified);
+	}	
+#endif
 	dev_info (&udev->dev,
 			"%s %s speed USB device using %s and address %d\n",
 			(udev->config) ? "reset" : "new",

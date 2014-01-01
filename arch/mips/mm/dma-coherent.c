@@ -9,16 +9,16 @@
  */
 #include <linux/config.h>
 #include <linux/types.h>
+#include <linux/dma-mapping.h>
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/string.h>
-#include <linux/pci.h>
 
 #include <asm/cache.h>
 #include <asm/io.h>
 
 void *dma_alloc_noncoherent(struct device *dev, size_t size,
-	dma_addr_t * dma_handle, int gfp)
+	dma_addr_t * dma_handle, unsigned int __nocast gfp)
 {
 	void *ret;
 	/* ignore region specifiers */
@@ -39,7 +39,7 @@ void *dma_alloc_noncoherent(struct device *dev, size_t size,
 EXPORT_SYMBOL(dma_alloc_noncoherent);
 
 void *dma_alloc_coherent(struct device *dev, size_t size,
-	dma_addr_t * dma_handle, int gfp)
+	dma_addr_t * dma_handle, unsigned int __nocast gfp)
 	__attribute__((alias("dma_alloc_noncoherent")));
 
 EXPORT_SYMBOL(dma_alloc_coherent);
@@ -186,6 +186,13 @@ int dma_supported(struct device *dev, u64 mask)
 	if (mask < 0x00ffffff)
 		return 0;
 
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	if (mask < 0x0fffffff)
+		return 0;
+#endif
+
+
+
 	return 1;
 }
 
@@ -223,7 +230,12 @@ EXPORT_SYMBOL(pci_dac_page_to_dma);
 struct page *pci_dac_dma_to_page(struct pci_dev *pdev,
 	dma64_addr_t dma_addr)
 {
+#ifdef CONFIG_DISCONTIGMEM
+	return  pfn_to_page(dma_addr >> PAGE_SHIFT);
+#else
 	return mem_map + (dma_addr >> PAGE_SHIFT);
+#endif
+
 }
 
 EXPORT_SYMBOL(pci_dac_dma_to_page);

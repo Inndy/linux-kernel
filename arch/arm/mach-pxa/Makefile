@@ -24,3 +24,8 @@ obj-$(CONFIG_LEDS) += $(led-y)
 
 # Misc features
 obj-$(CONFIG_PM) += pm.o sleep.o
+obj-$(CONFIG_KGDB_PXA_SERIAL) += kgdb-serial.o
+
+ifeq ($(CONFIG_PXA27x),y)
+  obj-$(CONFIG_PM) += standby.o
+#endif

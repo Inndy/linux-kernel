@@ -840,7 +840,23 @@ void scsi_io_completion(struct scsi_cmnd *cmd, unsigned int good_bytes,
 				 */
 				scsi_requeue_command(q, cmd);
 				result = 0;
-			} else {
+			} 
+#if defined (CONFIG_MIPS_BCM7440)
+			else if (cmd->device->r10_fallback_ok
+					 && cmd->device->use_12_for_rw
+					 && cmd->cmnd[0] == READ_12) {
+				/*
+				 * This will cause a retry with a 10-byte
+				 * command.
+				 */
+				printk("%s: Requeue READ_12 as READ_10 (ILLEGAL COMMAND)\n", __FUNCTION__);
+				cmd->device->use_12_for_rw = 0;
+				cmd->device->use_10_for_rw = 1;
+				scsi_requeue_command(q, cmd);
+				result = 0;
+			}
+#endif
+            else {
 				cmd = scsi_end_request(cmd, 0, this_count, 1);
 				return;
 			}

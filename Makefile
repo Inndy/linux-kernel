@@ -1,7 +1,8 @@
 VERSION = 2
 PATCHLEVEL = 6
 SUBLEVEL = 12
-EXTRAVERSION =
+# STABLE_VERSION = .2
+EXTRAVERSION =-4.2-brcmstb
 NAME=Woozy Numbat
 
 # *DOCUMENTATION*
@@ -167,9 +168,7 @@ KERNELRELEASE=$(VERSION).$(PATCHLEVEL).$(SUBLEVEL)$(EXTRAVERSION)$(LOCALVERSION)
 # then ARCH is assigned, getting whatever value it gets normally, and 
 # SUBARCH is subsequently ignored.
 
-SUBARCH := $(shell uname -m | sed -e s/i.86/i386/ -e s/sun4u/sparc64/ \
-				  -e s/arm.*/arm/ -e s/sa110/arm/ \
-				  -e s/s390x/s390/ -e s/parisc64/parisc/ )
+SUBARCH := mips
 
 # Cross compiling and selecting different set of gcc/bin-utils
 # ---------------------------------------------------------------------------
@@ -340,6 +339,27 @@ LDFLAGS_MODULE  = -r
 CFLAGS_KERNEL	=
 AFLAGS_KERNEL	=
 
+# Use HUMAX_SUPPORT_CONSOLE to enable console display.
+ifeq ($(CONFIG_PACKAGE_FACTORY),y)
+	HUMAX_DEFINES := -DHUMAX_FACTORY_MODE -DHUMAX_SUPPORT_CONSOLE
+else
+	ifeq ($(CONFIG_IMAGE_DEBUG),y)
+		HUMAX_DEFINES := -DHUMAX_SUPPORT_CONSOLE
+	else
+		ifeq ($(CONFIG_KERNEL_DEBUG),y)
+			HUMAX_DEFINES := -DHUMAX_SUPPORT_CONSOLE
+		endif
+		ifeq ($(CONFIG_BCM_DEBUG),y)
+			HUMAX_DEFINES := -DHUMAX_SUPPORT_CONSOLE
+		endif
+		ifeq ($(CONFIG_SETTOP_DEBUG),y)
+			HUMAX_DEFINES := -DHUMAX_SUPPORT_CONSOLE
+		endif
+	endif
+endif
+ifeq ($(CONFIG_HUMAX_CONTROL_VPP),y)
+	HUMAX_DEFINE_ABOUT_VPP := -DCONFIG_HUMAX_CONTROL_VPP
+endif
 
 # Use LINUXINCLUDE when you must reference the include/ directory.
 # Needed to be compatible with the O= option
@@ -350,8 +370,12 @@ CPPFLAGS        := -D__KERNEL__ $(LINUXINCLUDE)
 
 CFLAGS 		:= -Wall -Wstrict-prototypes -Wno-trigraphs \
 	  	   -fno-strict-aliasing -fno-common \
-		   -ffreestanding
-AFLAGS		:= -D__ASSEMBLY__
+		   -ffreestanding \
+			$(HUMAX_DEFINE_ABOUT_VPP) \
+		   $(HUMAX_DEFINES)
+AFLAGS		:= -D__ASSEMBLY__ \
+			$(HUMAX_DEFINE_ABOUT_VPP) \
+		   $(HUMAX_DEFINES)
 
 export	VERSION PATCHLEVEL SUBLEVEL EXTRAVERSION LOCALVERSION KERNELRELEASE \
 	ARCH CONFIG_SHELL HOSTCC HOSTCFLAGS CROSS_COMPILE AS LD CC \
@@ -504,11 +528,18 @@ endif
 # Defaults vmlinux but it is usually overriden in the arch makefile
 all: vmlinux
 
+
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
-CFLAGS		+= -Os
+COPTIMIZE       = -Os
 else
-CFLAGS		+= -O2
+COPTIMIZE       = -O2
 endif
+
+# COPTIMIZE may be overridden on the make command line with
+#       make ... COPTIMIZE=""
+# The resulting object may be easier to debug with KGDB
+CFLAGS          += $(COPTIMIZE)
+
 
 #Add align options if CONFIG_CC_* is not equal to 0
 add-align = $(if $(filter-out 0,$($(1))),$(cc-option-align)$(2)=$($(1)))
@@ -534,7 +565,7 @@ NOSTDINC_FLAGS += -nostdinc -isystem $(shell $(CC) -print-file-name=include)
 CHECKFLAGS     += $(NOSTDINC_FLAGS)
 
 # warn about C99 declaration after statement
-CFLAGS += $(call cc-option,-Wdeclaration-after-statement,)
+#CFLAGS += $(call cc-option,-Wdeclaration-after-statement,)
 
 # disable pointer signedness warnings in gcc 4.0
 CFLAGS += $(call cc-option,-Wno-pointer-sign,)
@@ -1341,5 +1372,8 @@ clean := -f $(if $(KBUILD_SRC),$(srctree)/)scripts/Makefile.clean obj
 descend =$(Q)$(MAKE) -f $(if $(KBUILD_SRC),$(srctree)/)scripts/Makefile.build obj=$(1) $(2)
 
 endif	# skip-makefile
+include/linux/dwarf2-defs.h: $(srctree)/include/linux/dwarf2.h $(srctree)/scripts/dwarfh.awk
+	mkdir -p include/linux/
+	awk -f $(srctree)/scripts/dwarfh.awk $(srctree)/include/linux/dwarf2.h > include/linux/dwarf2-defs.h
 
-FORCE:
+FORCE: include/linux/dwarf2-defs.h

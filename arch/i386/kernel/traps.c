@@ -332,7 +332,7 @@ void die(const char * str, struct pt_regs * regs, long err)
 #endif
 		if (nl)
 			printk("\n");
-	notify_die(DIE_OOPS, (char *)str, regs, err, 255, SIGSEGV);
+		notify_die(DIE_OOPS, (char *)str, regs, err, 255, SIGSEGV);
 		show_registers(regs);
   	} else
 		printk(KERN_ERR "Recursive die() failure, output suppressed\n");
@@ -555,6 +555,7 @@ static DEFINE_SPINLOCK(nmi_print_lock);
 
 void die_nmi (struct pt_regs *regs, const char *msg)
 {
+	notify_die(DIE_NMIWATCHDOG, "nmi watchdog", regs, 0, 2, SIGPWR);
 	spin_lock(&nmi_print_lock);
 	/*
 	* We are in trouble anyway, lets at least try
@@ -723,11 +724,10 @@ fastcall void do_debug(struct pt_regs * regs, long error_code)
 	/* Disable additional traps. They'll be re-enabled when
 	 * the signal is delivered.
 	 */
-clear_dr7:
-	__asm__("movl %0,%%db7"
-		: /* no output */
-		: "r" (0));
-	return;
+ clear_dr7:
+  	set_debugreg(0, 7);
+    notify_die(DIE_DEBUG, "debug2", regs, condition, error_code, SIGTRAP);
+  	return;
 
 debug_vm86:
 	handle_vm86_trap((struct kernel_vm86_regs *) regs, error_code, 1);
@@ -1028,6 +1028,12 @@ static void __init set_task_gate(unsigned int n, unsigned int gdt_entry)
 	_set_gate(idt_table+n,5,0,0,(gdt_entry<<3));
 }
 
+/* Some traps need to be set early. */
+void __init early_trap_init(void) {
+	set_intr_gate(1,&debug);
+	set_system_intr_gate(3, &int3); /* int3 can be called from all */
+	set_intr_gate(14,&page_fault);
+}
 
 void __init trap_init(void)
 {
@@ -1044,10 +1050,8 @@ void __init trap_init(void)
 #endif
 
 	set_trap_gate(0,&divide_error);
-	set_intr_gate(1,&debug);
 	set_intr_gate(2,&nmi);
-	set_system_intr_gate(3, &int3); /* int3-5 can be called from all */
-	set_system_gate(4,&overflow);
+	set_system_gate(4,&overflow); /* int4/5 can be called from all */
 	set_system_gate(5,&bounds);
 	set_trap_gate(6,&invalid_op);
 	set_trap_gate(7,&device_not_available);
@@ -1057,7 +1061,6 @@ void __init trap_init(void)
 	set_trap_gate(11,&segment_not_present);
 	set_trap_gate(12,&stack_segment);
 	set_trap_gate(13,&general_protection);
-	set_intr_gate(14,&page_fault);
 	set_trap_gate(15,&spurious_interrupt_bug);
 	set_trap_gate(16,&coprocessor_error);
 	set_trap_gate(17,&alignment_check);

@@ -47,6 +47,7 @@
 #include <asm/tlbflush.h>
 #include <asm/unistd.h>
 #include <asm/mca.h>
+#include <linux/kgdb.h>
 
 /*
  * Structure and data for smp_call_function(). This is designed to minimise static memory
@@ -66,6 +67,9 @@ static volatile struct call_data_struct *call_data;
 
 #define IPI_CALL_FUNC		0
 #define IPI_CPU_STOP		1
+#ifdef	CONFIG_KGDB
+#define	IPI_KGDB_INTERRUPT	2
+#endif
 
 /* This needs to be cacheline aligned because it is written to by *other* CPUs.  */
 static DEFINE_PER_CPU(u64, ipi_operation) ____cacheline_aligned;
@@ -155,6 +159,11 @@ handle_IPI (int irq, void *dev_id, struct pt_regs *regs)
 			      case IPI_CPU_STOP:
 				stop_this_cpu();
 				break;
+#ifdef	CONFIG_KGDB
+			      case IPI_KGDB_INTERRUPT:
+				kgdb_wait_ipi(regs);
+				break;
+#endif
 
 			      default:
 				printk(KERN_CRIT "Unknown IPI on CPU %d: %lu\n", this_cpu, which);
@@ -301,6 +310,14 @@ smp_call_function_single (int cpuid, void (*func) (void *info), void *info, int 
 	return 0;
 }
 EXPORT_SYMBOL(smp_call_function_single);
+
+#ifdef	CONFIG_KGDB
+void
+smp_send_nmi_allbutself(void)
+{
+	send_IPI_allbutself(IPI_KGDB_INTERRUPT);
+}
+#endif
 
 /*
  * this function sends a 'generic call function' IPI to all other CPUs

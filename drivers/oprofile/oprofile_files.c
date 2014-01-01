@@ -63,7 +63,7 @@ static struct file_operations pointer_size_fops = {
 
 static ssize_t cpu_type_read(struct file * file, char __user * buf, size_t count, loff_t * offset)
 {
-	return oprofilefs_str_to_user(oprofile_ops.cpu_type, buf, count, offset);
+	return oprofilefs_str_to_user(oprofile_ops->cpu_type, buf, count, offset);
 }
  
  
@@ -130,6 +130,6 @@ void oprofile_create_files(struct super_block * sb, struct dentry * root)
 	oprofilefs_create_file(sb, root, "backtrace_depth", &depth_fops);
 	oprofilefs_create_file(sb, root, "pointer_size", &pointer_size_fops);
 	oprofile_create_stats_files(sb, root);
-	if (oprofile_ops.create_files)
-		oprofile_ops.create_files(sb, root);
+	if (oprofile_ops->create_files)
+		oprofile_ops->create_files(sb, root);
 }

@@ -449,6 +449,9 @@ copy_thread (int nr, unsigned long clone_flags,
 	 */
 	child_ptregs->cr_ipsr = ((child_ptregs->cr_ipsr | IA64_PSR_BITS_TO_SET)
 				 & ~(IA64_PSR_BITS_TO_CLEAR | IA64_PSR_PP | IA64_PSR_UP));
+#ifdef	CONFIG_KGDB
+	child_ptregs->cr_ipsr |= IA64_PSR_DB;
+#endif
 
 	/*
 	 * NOTE: The calling convention considers all floating point
@@ -677,6 +680,9 @@ kernel_thread (int (*fn)(void *), void *arg, unsigned long flags)
 	regs.pt.r11 = (unsigned long) arg;	/* 2nd argument */
 	/* Preserve PSR bits, except for bits 32-34 and 37-45, which we can't read.  */
 	regs.pt.cr_ipsr = ia64_getreg(_IA64_REG_PSR) | IA64_PSR_BN;
+#ifdef	CONFIG_KGDB
+	regs.pt.cr_ipsr |= IA64_PSR_DB;
+#endif
 	regs.pt.cr_ifs = 1UL << 63;		/* mark as valid, empty frame */
 	regs.sw.ar_fpsr = regs.pt.ar_fpsr = ia64_getreg(_IA64_REG_AR_FPSR);
 	regs.sw.ar_bspstore = (unsigned long) current + IA64_RBS_OFFSET;

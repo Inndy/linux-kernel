@@ -44,6 +44,11 @@
 #include <linux/cpuset.h>
 #include <linux/efi.h>
 #include <linux/unistd.h>
+#ifdef CONFIG_DISCONTIGMEM
+#include <asm/mmzone.h>
+#include <linux/mm.h>
+#include <linux/mmzone.h>
+#endif
 #include <linux/rmap.h>
 #include <linux/mempolicy.h>
 #include <linux/key.h>
@@ -51,6 +56,9 @@
 #include <asm/io.h>
 #include <asm/bugs.h>
 #include <asm/setup.h>
+
+#include <asm/cacheflush.h>
+
 
 /*
  * This is one of the first .c files built. Error out early
@@ -120,11 +128,19 @@ extern void softirq_init(void);
 
 /* Untouched command line (eg. for /proc) saved by arch-specific code. */
 char saved_command_line[COMMAND_LINE_SIZE];
+#if (HUMAX_MODIFY == y)
+EXPORT_SYMBOL(saved_command_line);
+#endif
 
 static char *execute_command;
 
 /* Setup configured maximum number of CPUs to activate */
 static unsigned int max_cpus = NR_CPUS;
+
+
+#ifdef HUMAX_FACTORY_MODE
+static unsigned long tlb_refill_cmdcode;
+#endif
 
 /*
  * Setup routine for controlling SMP activation
@@ -367,6 +383,18 @@ static void __init smp_init(void)
 
 #endif
 
+#ifdef CONFIG_MIPS_BRCM_IKOS
+
+/* HACK: provide a constant start address for Ikos (0x80001400) */
+
+ATTRIB_NORET void noinline jump_to_entry(void)
+{
+	void kernel_entry(void);
+	kernel_entry();
+}
+
+#endif
+
 /*
  * We need to finalize in a non-__init function or else race conditions
  * between the root thread and the init thread may cause start_kernel to
@@ -431,6 +459,7 @@ asmlinkage void __init start_kernel(void)
  */
 	lock_kernel();
 	page_address_init();
+
 	printk(KERN_NOTICE);
 	printk(linux_banner);
 	setup_arch(&command_line);
@@ -518,10 +547,17 @@ asmlinkage void __init start_kernel(void)
 #endif
 	cpuset_init();
 
+#ifdef HUMAX_FACTORY_MODE
+	tlb_refill_cmdcode = *(unsigned long *)0x80000008;
+#endif
+
 	check_bugs();
 
 	acpi_early_init(); /* before LAPIC and SMP init */
 
+	//printk("Flushing cache\n");
+	flush_cache_all();
+	
 	/* Do the rest non-__init'ed, we're now alive */
 	rest_init();
 }
@@ -693,7 +729,7 @@ static int init(void * unused)
 
 	(void) sys_dup(0);
 	(void) sys_dup(0);
-	
+
 	/*
 	 * We try each of these until one succeeds.
 	 *
@@ -701,6 +737,13 @@ static int init(void * unused)
 	 * trying to recover a really broken machine.
 	 */
 
+#ifdef HUMAX_FACTORY_MODE
+	if(*(unsigned long *)0x80000008!=tlb_refill_cmdcode)
+	{
+		*(unsigned long *)0x80000008 = tlb_refill_cmdcode;
+		flush_cache_all();
+	}
+#endif	
 	if (execute_command)
 		run_init_process(execute_command);
 

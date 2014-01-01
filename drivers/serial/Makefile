@@ -8,7 +8,9 @@ serial-8250-y :=
 serial-8250-$(CONFIG_SERIAL_8250_ACPI) += 8250_acpi.o
 serial-8250-$(CONFIG_PNP) += 8250_pnp.o
 serial-8250-$(CONFIG_GSC) += 8250_gsc.o
+ifneq ($(CONFIG_MIPS_BRCM97XXX),y)
 serial-8250-$(CONFIG_PCI) += 8250_pci.o
+endif
 serial-8250-$(CONFIG_HP300) += 8250_hp300.o
 
 obj-$(CONFIG_SERIAL_CORE) += serial_core.o
@@ -46,9 +48,15 @@ obj-$(CONFIG_SERIAL_IMX) += imx.o
 obj-$(CONFIG_SERIAL_MPC52xx) += mpc52xx_uart.o
 obj-$(CONFIG_SERIAL_ICOM) += icom.o
 obj-$(CONFIG_SERIAL_M32R_SIO) += m32r_sio.o
+obj-$(CONFIG_KGDB_MPSC) += kgdb_mpsc.o
 obj-$(CONFIG_SERIAL_MPSC) += mpsc.o
 obj-$(CONFIG_ETRAX_SERIAL) += crisv10.o
 obj-$(CONFIG_SERIAL_JSM) += jsm/
 obj-$(CONFIG_SERIAL_TXX9) += serial_txx9.o
 obj-$(CONFIG_SERIAL_VR41XX) += vr41xx_siu.o
-obj-$(CONFIG_BLK_DEV_SGIIOC4) += ioc4_serial.o
+obj-$(CONFIG_SERIAL_SGI_IOC4) += ioc4_serial.o
+# jipeng - avoid build kgdb_8250 since it is already built elsewhere
+#obj-$(CONFIG_KGDB_8250) += kgdb_8250.o
+obj-$(CONFIG_KGDB_8250_MODULE) += kgdb_8250.o
+
+

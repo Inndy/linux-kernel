@@ -122,6 +122,7 @@ static char *log_buf = __log_buf;
 static int log_buf_len = __LOG_BUF_LEN;
 static unsigned long logged_chars; /* Number of chars produced since last read+clear operation */
 
+
 /*
  *	Setup a list of consoles. Called from init/main.c
  */
@@ -512,6 +513,7 @@ asmlinkage int printk(const char *fmt, ...)
 	va_end(args);
 
 	return r;
+
 }
 
 asmlinkage int vprintk(const char *fmt, va_list args)
@@ -521,6 +523,21 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 	char *p;
 	static char printk_buf[1024];
 	static int log_level_unknown = 1;
+
+
+/************* THT: HACK HACK HACK Provide early printk *******************/
+	
+	
+    if (/*1*/ !brcm_console_initialized() /**/) {
+	    /* This stops the holder of console_sem just where we want him */
+	    spin_lock_irqsave(&logbuf_lock, flags);
+        printed_len = vsprintf(printk_buf, fmt, args);
+        spin_unlock_irqrestore(&logbuf_lock, flags);
+        uart_puts(printk_buf);
+        return printed_len;
+    }
+
+/************* END HACK END HACK END HACK **********************************/
 
 	if (unlikely(oops_in_progress))
 		zap_locks();

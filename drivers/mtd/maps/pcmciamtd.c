@@ -1,5 +1,5 @@
 /*
- * $Id: pcmciamtd.c,v 1.51 2004/07/12 22:38:29 dwmw2 Exp $
+ * $Id: pcmciamtd.c,v 1.58 2006/01/30 09:10:39 sean Exp $
  *
  * pcmciamtd.c - MTD driver for PCMCIA flash memory cards
  *
@@ -18,7 +18,6 @@
 #include <asm/io.h>
 #include <asm/system.h>
 
-#include <pcmcia/version.h>
 #include <pcmcia/cs_types.h>
 #include <pcmcia/cs.h>
 #include <pcmcia/cistpl.h>
@@ -49,7 +48,7 @@ static const int debug = 0;
 
 
 #define DRIVER_DESC	"PCMCIA Flash memory card driver"
-#define DRIVER_VERSION	"$Revision: 1.51 $"
+#define DRIVER_VERSION	"$Revision: 1.58 $"
 
 /* Size of the PCMCIA address space: 26 bits = 64 MB */
 #define MAX_PCMCIA_ADDR	0x4000000
@@ -177,7 +176,7 @@ static void pcmcia_copy_from_remap(struct map_info *map, void *to, unsigned long
 
 		if(toread > len)
 			toread = len;
-		
+
 		addr = remap_window(map, from);
 		if(!addr)
 			return;
@@ -387,7 +386,7 @@ static void card_settings(struct pcmciamtd_dev *dev, dev_link_t *link, int *new_
 			cs_error(link->handle, ParseTuple, rc);
 			break;
 		}
-		
+
 		switch(tuple.TupleCode) {
 		case  CISTPL_FORMAT: {
 			cistpl_format_t *t = &parse.format;
@@ -395,9 +394,9 @@ static void card_settings(struct pcmciamtd_dev *dev, dev_link_t *link, int *new_
 			DEBUG(2, "Format type: %u, Error Detection: %u, offset = %u, length =%u",
 			      t->type, t->edc, t->offset, t->length);
 			break;
-			
+
 		}
-			
+
 		case CISTPL_DEVICE: {
 			cistpl_device_t *t = &parse.device;
 			int i;
@@ -411,7 +410,7 @@ static void card_settings(struct pcmciamtd_dev *dev, dev_link_t *link, int *new_
 			}
 			break;
 		}
-			
+
 		case CISTPL_VERS_1: {
 			cistpl_vers_1_t *t = &parse.version_1;
 			int i;
@@ -426,7 +425,7 @@ static void card_settings(struct pcmciamtd_dev *dev, dev_link_t *link, int *new_
 			DEBUG(2, "Found name: %s", dev->mtd_name);
 			break;
 		}
-			
+
 		case CISTPL_JEDEC_C: {
 			cistpl_jedec_t *t = &parse.jedec;
 			int i;
@@ -435,7 +434,7 @@ static void card_settings(struct pcmciamtd_dev *dev, dev_link_t *link, int *new_
 			}
 			break;
 		}
-			
+
 		case CISTPL_DEVICE_GEO: {
 			cistpl_device_geo_t *t = &parse.device_geo;
 			int i;
@@ -450,11 +449,11 @@ static void card_settings(struct pcmciamtd_dev *dev, dev_link_t *link, int *new_
 			}
 			break;
 		}
-			
+
 		default:
 			DEBUG(2, "Unknown tuple code %d", tuple.TupleCode);
 		}
-		
+
 		rc = pcmcia_get_next_tuple(link->handle, &tuple);
 	}
 	if(!dev->pcmcia_map.size)
@@ -471,7 +470,7 @@ static void card_settings(struct pcmciamtd_dev *dev, dev_link_t *link, int *new_
 	if(bankwidth) {
 		dev->pcmcia_map.bankwidth = bankwidth;
 		DEBUG(2, "bankwidth forced to %d", bankwidth);
-	}		
+	}
 
 	dev->pcmcia_map.name = dev->mtd_name;
 	if(!dev->mtd_name[0]) {
@@ -569,7 +568,7 @@ static void pcmciamtd_config(dev_link_t *link)
 		return;
 	}
 	DEBUG(1, "Allocated a window of %dKiB", dev->win_size >> 10);
-		
+
 	/* Get write protect status */
 	CS_CHECK(GetStatus, pcmcia_get_status(link->handle, &status));
 	DEBUG(2, "status value: 0x%x window handle = 0x%8.8lx",
@@ -625,11 +624,11 @@ static void pcmciamtd_config(dev_link_t *link)
 			mtd = do_map_probe(probes[i], &dev->pcmcia_map);
 			if(mtd)
 				break;
-			
+
 			DEBUG(1, "FAILED: %s", probes[i]);
 		}
 	}
-	
+
 	if(!mtd) {
 		DEBUG(1, "Cant find an MTD");
 		pcmciamtd_release(link);
@@ -712,6 +711,7 @@ static int pcmciamtd_event(event_t event, int priority,
 			struct pcmciamtd_dev *dev = link->priv;
 			if(dev->mtd_info) {
 				del_mtd_device(dev->mtd_info);
+				map_destroy(dev->mtd_info);
 				info("mtd%d: Removed", dev->mtd_info->index);
 			}
 			pcmciamtd_release(link);
@@ -800,11 +800,6 @@ static dev_link_t *pcmciamtd_attach(void)
 
 	/* Register with Card Services */
 	client_reg.dev_info = &dev_info;
-	client_reg.EventMask =
-		CS_EVENT_RESET_PHYSICAL | CS_EVENT_CARD_RESET |
-		CS_EVENT_CARD_INSERTION | CS_EVENT_CARD_REMOVAL |
-		CS_EVENT_PM_SUSPEND | CS_EVENT_PM_RESUME;
-	client_reg.event_handler = &pcmciamtd_event;
 	client_reg.Version = 0x0210;
 	client_reg.event_callback_args.client_data = link;
 	DEBUG(2, "Calling RegisterClient");
@@ -818,14 +813,42 @@ static dev_link_t *pcmciamtd_attach(void)
 	return link;
 }
 
+static struct pcmcia_device_id pcmciamtd_ids[] = {
+	PCMCIA_DEVICE_FUNC_ID(1),
+	PCMCIA_DEVICE_PROD_ID123("IO DATA", "PCS-2M", "2MB SRAM", 0x547e66dc, 0x1fed36cd, 0x36eadd21),
+	PCMCIA_DEVICE_PROD_ID12("IBM", "2MB SRAM", 0xb569a6e5, 0x36eadd21),
+	PCMCIA_DEVICE_PROD_ID12("IBM", "4MB FLASH", 0xb569a6e5, 0x8bc54d2a),
+	PCMCIA_DEVICE_PROD_ID12("IBM", "8MB FLASH", 0xb569a6e5, 0x6df1be3e),
+	PCMCIA_DEVICE_PROD_ID12("Intel", "S2E20SW", 0x816cc815, 0xd14c9dcf),
+	PCMCIA_DEVICE_PROD_ID12("Intel", "S2E8 SW", 0x816cc815, 0xa2d7dedb),
+	PCMCIA_DEVICE_PROD_ID12("intel", "SERIES2-02 ", 0x40ade711, 0x145cea5c),
+	PCMCIA_DEVICE_PROD_ID12("intel", "SERIES2-04 ", 0x40ade711, 0x42064dda),
+	PCMCIA_DEVICE_PROD_ID12("intel", "SERIES2-20 ", 0x40ade711, 0x25ee5cb0),
+	PCMCIA_DEVICE_PROD_ID12("intel", "VALUE SERIES 100 ", 0x40ade711, 0xdf8506d8),
+	PCMCIA_DEVICE_PROD_ID12("KINGMAX TECHNOLOGY INC.", "SRAM 256K Bytes", 0x54d0c69c, 0xad12c29c),
+	PCMCIA_DEVICE_PROD_ID12("Maxtor", "MAXFL MobileMax Flash Memory Card", 0xb68968c8, 0x2dfb47b0),
+	PCMCIA_DEVICE_PROD_ID12("SEIKO EPSON", "WWB101EN20", 0xf9876baf, 0xad0b207b),
+	PCMCIA_DEVICE_PROD_ID12("SEIKO EPSON", "WWB513EN20", 0xf9876baf, 0xe8d884ad),
+	PCMCIA_DEVICE_PROD_ID12("Starfish, Inc.", "REX-3000", 0x05ddca47, 0xe7d67bca),
+	PCMCIA_DEVICE_PROD_ID12("Starfish, Inc.", "REX-4100", 0x05ddca47, 0x7bc32944),
+	/* the following was commented out in pcmcia-cs-3.2.7 */
+	/* PCMCIA_DEVICE_PROD_ID12("RATOC Systems,Inc.", "SmartMedia ADAPTER PC Card", 0xf4a2fefe, 0x5885b2ae), */
+#ifdef CONFIG_MTD_PCMCIA_ANONYMOUS
+	{ .match_flags = PCMCIA_DEV_ID_MATCH_ANONYMOUS, },
+#endif
+	PCMCIA_DEVICE_NULL
+};
+MODULE_DEVICE_TABLE(pcmcia, pcmciamtd_ids);
 
 static struct pcmcia_driver pcmciamtd_driver = {
 	.drv		= {
 		.name	= "pcmciamtd"
 	},
 	.attach		= pcmciamtd_attach,
+	.event		= pcmciamtd_event,
 	.detach		= pcmciamtd_detach,
-	.owner		= THIS_MODULE
+	.owner		= THIS_MODULE,
+	.id_table	= pcmciamtd_ids,
 };
 
 

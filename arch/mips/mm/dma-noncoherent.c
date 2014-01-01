@@ -24,7 +24,7 @@
  */
 
 void *dma_alloc_noncoherent(struct device *dev, size_t size,
-	dma_addr_t * dma_handle, int gfp)
+	dma_addr_t * dma_handle, unsigned int __nocast gfp)
 {
 	void *ret;
 	/* ignore region specifiers */
@@ -32,6 +32,11 @@ void *dma_alloc_noncoherent(struct device *dev, size_t size,
 
 	if (dev == NULL || (dev->coherent_dma_mask < 0xffffffff))
 		gfp |= GFP_DMA;
+
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	gfp |= GFP_DMA;
+#endif
+
 	ret = (void *) __get_free_pages(gfp, get_order(size));
 
 	if (ret != NULL) {
@@ -45,7 +50,7 @@ void *dma_alloc_noncoherent(struct device *dev, size_t size,
 EXPORT_SYMBOL(dma_alloc_noncoherent);
 
 void *dma_alloc_coherent(struct device *dev, size_t size,
-	dma_addr_t * dma_handle, int gfp)
+	dma_addr_t * dma_handle, unsigned int __nocast gfp)
 {
 	void *ret;
 
@@ -162,6 +167,19 @@ int dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
 
 	for (i = 0; i < nents; i++, sg++) {
 		unsigned long addr;
+
+#if defined ( CONFIG_MIPS_BCM97438 )
+	if ((unsigned long)sg->page >= 0xe0000000) {
+		printk(KERN_WARNING "dma_map_sg: page 0x%p\n", sg->page);
+	dump_stack();
+}
+#elif defined ( CONFIG_MIPS_BCM7440 )
+        if ((unsigned long)sg->page >= 0xd8000000) {
+                printk(KERN_WARNING "dma_map_sg: page 0x%p\n", sg->page);
+        dump_stack();
+}
+#endif
+
  
 		addr = (unsigned long) page_address(sg->page);
 		if (addr)
@@ -325,6 +343,11 @@ int dma_supported(struct device *dev, u64 mask)
 	if (mask < 0x00ffffff)
 		return 0;
 
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	if (mask < 0x0fffffff)
+		return 0;
+#endif
+
 	return 1;
 }
 
@@ -361,6 +384,7 @@ dma64_addr_t pci_dac_page_to_dma(struct pci_dev *pdev,
 
 EXPORT_SYMBOL(pci_dac_page_to_dma);
 
+#ifndef CONFIG_DISCONTIGMEM
 struct page *pci_dac_dma_to_page(struct pci_dev *pdev,
 	dma64_addr_t dma_addr)
 {
@@ -368,6 +392,7 @@ struct page *pci_dac_dma_to_page(struct pci_dev *pdev,
 }
 
 EXPORT_SYMBOL(pci_dac_dma_to_page);
+#endif
 
 unsigned long pci_dac_dma_to_offset(struct pci_dev *pdev,
 	dma64_addr_t dma_addr)

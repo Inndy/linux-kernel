@@ -7,10 +7,10 @@ config PROFILING
 	help
 	  Say Y here to enable the extended profiling support mechanisms used
 	  by profilers such as OProfile.
-
+	  
 
 config OPROFILE
-	tristate "OProfile system profiling (EXPERIMENTAL)"
+	bool "OProfile system profiling (EXPERIMENTAL)"
 	depends on PROFILING
 	help
 	  OProfile is a profiling system capable of profiling the

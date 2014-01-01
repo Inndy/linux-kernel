@@ -429,7 +429,7 @@ cpci690_set_bat(u32 addr, u32 size)
 	mb();
 }
 
-#if defined(CONFIG_SERIAL_TEXT_DEBUG) || defined(CONFIG_KGDB)
+#if defined(CONFIG_SERIAL_TEXT_DEBUG) || defined(CONFIG_KGDB_MPSC)
 static void __init
 cpci690_map_io(void)
 {
@@ -475,15 +475,13 @@ platform_init(unsigned long r3, unsigned long r4, unsigned long r5,
 	cpci690_set_bat(CPCI690_BR_BASE, 32 * MB);
 	cpci690_br_base = CPCI690_BR_BASE;
 
-#ifdef	CONFIG_SERIAL_TEXT_DEBUG
+#if defined(CONFIG_SERIAL_TEXT_DEBUG) || defined(CONFIG_KGDB_MPSC)
 	ppc_md.setup_io_mappings = cpci690_map_io;
+#ifdef CONFIG_SERIAL_TEXT_DEBUG
 	ppc_md.progress = mv64x60_mpsc_progress;
 	mv64x60_progress_init(CONFIG_MV64X60_NEW_BASE);
 #endif	/* CONFIG_SERIAL_TEXT_DEBUG */
-#ifdef	CONFIG_KGDB
-	ppc_md.setup_io_mappings = cpci690_map_io;
-	ppc_md.early_serial_map = cpci690_early_serial_map;
-#endif	/* CONFIG_KGDB */
+#endif	/* defined(CONFIG_SERIAL_TEXT_DEBUG) || defined(CONFIG_KGDB_MPSC) */
 
 #if defined(CONFIG_SERIAL_MPSC)
 	platform_notify = cpci690_platform_notify;

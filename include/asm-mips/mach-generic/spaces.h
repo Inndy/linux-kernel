@@ -29,7 +29,13 @@
  * Memory above this physical address will be considered highmem.
  */
 #ifndef HIGHMEM_START
-#define HIGHMEM_START		0x20000000UL
+    #if defined ( CONFIG_MIPS_BCM97438 )
+    #define HIGHMEM_START              0x40000000UL
+    #elif defined ( CONFIG_MIPS_BCM7440 )
+    #define HIGHMEM_START              0x30000000UL
+    #else
+    #define HIGHMEM_START              0x20000000UL
+    #endif
 #endif
 
 #endif /* CONFIG_MIPS32 */

@@ -263,6 +263,11 @@ static void __init get_fs_names(char *page)
 				;
 			s[-1] = '\0';
 		}
+#if defined(CONFIG_MIPS_BRCM97XXX) && defined(CONFIG_JFFS2_FS)
+		/* PR28961: allow jffs2 rootfs autodetect */
+		strcpy(s, "jffs2");
+		s += 6;
+#endif
 	}
 	*s = '\0';
 }

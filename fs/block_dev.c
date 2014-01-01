@@ -354,6 +354,36 @@ static int bdev_set(struct inode *inode, void *data)
 
 static LIST_HEAD(all_bdevs);
 
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined (CONFIG_MIPS_BCM7440 )
+
+int is_hd(dev_t dev) 
+{
+       switch (MAJOR(dev) ) {
+               case 3: ///dev/hda
+               case 8: // dev/sda
+               case 9: //RAID
+               case 11: //SCSI CDROM
+               case 12: //MSCDEX
+               case 13:
+               case 15:
+               case 16:
+               case 17:
+               case 18:
+               case 20:
+               case 21:
+               case 22:
+                       //etc....
+//                     printk(KERN_WARNING "is_hd: yes %d\n", MAJOR(dev));
+                       return (1);
+                       break;
+       }
+//     printk(KERN_WARNING "is_hd: no %d\n", MAJOR(dev));
+       return (0);
+}
+
+#endif
+
+
 struct block_device *bdget(dev_t dev)
 {
 	struct block_device *bdev;
@@ -377,6 +407,12 @@ struct block_device *bdget(dev_t dev)
 		inode->i_rdev = dev;
 		inode->i_bdev = bdev;
 		inode->i_data.a_ops = &def_blk_aops;
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+               if (is_hd(dev))
+                       mapping_set_gfp_mask(&inode->i_data, GFP_USER | GFP_DMA);
+               else
+#endif
+
 		mapping_set_gfp_mask(&inode->i_data, GFP_USER);
 		inode->i_data.backing_dev_info = &default_backing_dev_info;
 		spin_lock(&bdev_lock);

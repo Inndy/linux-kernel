@@ -224,7 +224,11 @@ static __init int init_emergency_pool(void)
 	if (!i.totalhigh)
 		return 0;
 
+#ifdef CONFIG_DISCONTIGMEM
+	page_pool = mempool_create(POOL_SIZE, page_pool_alloc, page_pool_free, __GFP_DMA);
+#else
 	page_pool = mempool_create(POOL_SIZE, page_pool_alloc, page_pool_free, NULL);
+#endif
 	if (!page_pool)
 		BUG();
 	printk("highmem bounce pool size: %d pages\n", POOL_SIZE);
@@ -392,8 +396,14 @@ static void __blk_queue_bounce(request_queue_t *q, struct bio **bio_orig,
 		/*
 		 * is destination page below bounce pfn?
 		 */
+#ifdef CONFIG_DISCONTIGMEM
+		if (page_to_pfn(page) <= q->bounce_pfn)
+#else
 		if (page_to_pfn(page) < q->bounce_pfn)
+#endif
 			continue;
+
+		printk(KERN_WARNING "__blk_queue_bounce: q 0x%p page 0x%p pfn 0x%08lx\n", q, page, page_to_pfn(page));
 
 		/*
 		 * irk, bounce it
@@ -465,6 +475,16 @@ void blk_queue_bounce(request_queue_t *q, struct bio **bio_orig)
 {
 	mempool_t *pool;
 
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+        /*
+         * We don't care about ISA ... not implemented
+         */
+        if (q->bounce_pfn >= blk_max_pfn - 1)
+                return;
+ 
+        pool = page_pool;
+#else
+
 	/*
 	 * for non-isa bounce case, just check if the bounce pfn is equal
 	 * to or bigger than the highest pfn in the system -- in that case,
@@ -478,7 +498,7 @@ void blk_queue_bounce(request_queue_t *q, struct bio **bio_orig)
 		BUG_ON(!isa_page_pool);
 		pool = isa_page_pool;
 	}
-
+#endif
 	/*
 	 * slow path
 	 */

@@ -70,7 +70,6 @@ mpc85xx_calibrate_decr(void)
 	mtspr(SPRN_TCR, TCR_DIE);
 }
 
-#ifdef CONFIG_SERIAL_8250
 void __init
 mpc85xx_early_serial_map(void)
 {
@@ -86,7 +85,7 @@ mpc85xx_early_serial_map(void)
 	pdata[0].mapbase += binfo->bi_immr_base;
 	pdata[0].membase = ioremap(pdata[0].mapbase, MPC85xx_UART0_SIZE);
 
-#if defined(CONFIG_SERIAL_TEXT_DEBUG) || defined(CONFIG_KGDB)
+#if defined(CONFIG_SERIAL_TEXT_DEBUG) || defined(CONFIG_KGDB_8250)
 	memset(&serial_req, 0, sizeof (serial_req));
 	serial_req.iotype = SERIAL_IO_MEM;
 	serial_req.mapbase = pdata[0].mapbase;
@@ -94,18 +93,24 @@ mpc85xx_early_serial_map(void)
 	serial_req.regshift = 0;
 
 	gen550_init(0, &serial_req);
+#ifdef CONFIG_KGDB_8250
+	kgdb8250_add_port(0, &serial_req);
+#endif
 #endif
 
 	pdata[1].uartclk = binfo->bi_busfreq;
 	pdata[1].mapbase += binfo->bi_immr_base;
 	pdata[1].membase = ioremap(pdata[1].mapbase, MPC85xx_UART0_SIZE);
 
-#if defined(CONFIG_SERIAL_TEXT_DEBUG) || defined(CONFIG_KGDB)
+#if defined(CONFIG_SERIAL_TEXT_DEBUG) || defined(CONFIG_KGDB_8250)
 	/* Assume gen550_init() doesn't modify serial_req */
 	serial_req.mapbase = pdata[1].mapbase;
 	serial_req.membase = pdata[1].membase;
 
 	gen550_init(1, &serial_req);
+#ifdef CONFIG_KGDB_8250
+	kgdb8250_add_port(1, &serial_req);
+#endif
 #endif
 }
 #endif
@@ -364,5 +369,3 @@ mpc85xx_setup_hose(void)
 	return;
 }
 #endif /* CONFIG_PCI */
-
-

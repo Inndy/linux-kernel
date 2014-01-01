@@ -7,6 +7,8 @@
 #include <linux/string.h>
 #include <linux/syscalls.h>
 
+#include <asm/cacheflush.h>
+
 static __initdata char *message;
 static void __init error(char *x)
 {
@@ -416,6 +418,12 @@ static void __init flush_window(void)
 static char * __init unpack_to_rootfs(char *buf, unsigned len, int check_only)
 {
 	int written;
+
+	// THT: Make sure that the initramfs is available to read, especially on MIPS24K platforms,
+	// or it will complain about CRC
+	//printk("-->%s, check_only=%d\n", __FUNCTION__, check_only);
+	flush_cache_all();
+
 	dry_run = check_only;
 	header_buf = malloc(110);
 	symlink_buf = malloc(PATH_MAX + N_ALIGN(PATH_MAX) + 1);
@@ -460,6 +468,7 @@ static char * __init unpack_to_rootfs(char *buf, unsigned len, int check_only)
 	free(name_buf);
 	free(symlink_buf);
 	free(header_buf);
+	//printk("<--%s\n", __FUNCTION__);
 	return message;
 }
 

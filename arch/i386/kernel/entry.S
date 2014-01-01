@@ -655,3 +655,108 @@ ENTRY(spurious_interrupt_bug)
 #include "syscall_table.S"
 
 syscall_table_size=(.-sys_call_table)
+
+#	Here we do call frames.  We cheat a bit as we only really need
+#	correct frames at locations we can actually look at from a
+#	debugger.  Since the break instruction trap actually goes thru
+#	some of this code, we don't really need info on those areas, but
+#	only after the fact.  I.e. if we can not step or break in a
+#	location or end up with a return address pointing at the
+#	location, we don't need a correct call frame for it.
+
+#ifdef CONFIG_KGDB
+
+#include <linux/dwarf2-lang.h>
+/*
+ * The register numbers as known by gdb
+ */
+
+#define _EAX 0
+#define _ECX 1
+#define _EDX 2
+#define _EBX 3
+#define _ESP 4
+#define _EBP 5
+#define _ESI 6
+#define _EDI 7
+#define _PC  8
+#define _EIP 8
+#define _PS  9
+#define _EFLAGS  9
+#define _CS 10
+#define _SS 11
+#define _DS 12
+#define _ES 13
+#define _FS 14
+#define _GS 15
+	/*
+	 * This code uses macros defined in linux/dwarf2-lang.h
+	 * They attempt to follow the dwarf2 naming conventions... sort of..
+	 */
+ENTRY(end_of_stack_stop_unwind_function)
+	.long 	end_of_stack_stop_unwind_function+1
+
+	.text
+
+	CFI_preamble(c1,_PC,1,1)
+	CFA_define_reference(_ESP,OLDESP)	/* Stack pointer */
+	CFA_expression(_EIP)
+	   CFA_exp_OP_dup			/* copy old esp */
+ 	   CFA_exp_OP_consts(CS-OLDESP)		/* offset to CS address */
+ 	   CFA_exp_OP_plus			/* should be CS address */
+	   CFA_exp_OP_deref			/* get the CS */
+	   CFA_exp_OP_const4s(VM_MASK|3)	/* prepare to mask it */
+	   CFA_exp_OP_and			/* mask it, zero means kernel */
+	   CFA_exp_OP_bra(eip_user_rtn)		/* branch if user */
+	   CFA_exp_OP_const4s(EIP-OLDESP)	/* offset to return address */
+	   CFA_exp_OP_plus			/* add that in */
+	   CFA_exp_OP_skip(eip_end)		/* done if kernel, skip out */
+eip_user_rtn:
+	   CFA_exp_OP_addr(end_of_stack_stop_unwind_function)/*dummy function */
+eip_end:
+	   CFA_expression_end
+	CFA_define_offset(_EBX,EBX-OLDESP)
+	CFA_define_offset(_ECX,ECX-OLDESP)
+	CFA_define_offset(_EDX,EDX-OLDESP)
+	CFA_define_offset(_ESI,ESI-OLDESP)
+	CFA_define_offset(_EDI,EDI-OLDESP)
+	CFA_define_offset(_EBP,EBP-OLDESP)
+	CFA_define_offset(_EAX,EAX-OLDESP)
+	CFA_define_offset(_EFLAGS,EFLAGS-OLDESP)
+	CFI_postamble()
+
+/*
+ * This provides an uwind for our dummy end of unwind function.
+ * Current convention is to provied an undefined return address.
+ */
+	CFI_preamble(c2,_PC,1,1)
+	CFA_define_reference(_ESP,0)	/* Stack pointer */
+	CFA_undefine_reg(_EIP)
+	CFI_postamble()
+
+	FDE_preamble(c2,end_of_stack_stop_unwind_function,
+	                end_of_stack_stop_unwind_function+5)
+	FDE_postamble()
+	/*
+         * This is VERY sloppy.  At this point all we want to do is get
+         * the frame right for back tracing.  It will not be good if
+         * you try to single step.  We use already defined labels.
+         * We want to cover all call outs.
+         * We could also recode this as just one FDE, but this works and
+         * I want to get it out.
+	 */
+	FDE_preamble(c1,ret_from_fork,ret_from_exception)
+	CFA_define_cfa_offset(4)		/* one extra word on stack */
+	FDE_postamble()
+
+	FDE_preamble(c1,ret_from_exception,device_not_available_emulate)
+	FDE_postamble()
+
+		FDE_preamble(c1,device_not_available_emulate,debug)
+	CFA_define_cfa_offset(4)		/* one extra word on stack */
+	FDE_postamble()
+
+	FDE_preamble(c1, debug,spurious_interrupt_bug)
+	FDE_postamble()
+
+#endif

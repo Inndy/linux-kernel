@@ -87,6 +87,8 @@ static int udf_get_block(struct inode *, sector_t, struct buffer_head *, int);
  */
 void udf_delete_inode(struct inode * inode)
 {
+	truncate_inode_pages(&inode->i_data, 0);
+
 	if (is_bad_inode(inode))
 		goto no_delete;
 
@@ -135,6 +137,32 @@ static sector_t udf_bmap(struct address_space *mapping, sector_t block)
 	return generic_block_bmap(mapping,block,udf_get_block);
 }
 
+static int
+udf_get_blocks(struct inode *inode, sector_t iblock, unsigned long max_blocks,
+                        struct buffer_head *bh_result, int create)
+{
+        int ret;
+
+        ret = udf_get_block(inode, iblock, bh_result, create);
+        if (ret == 0)
+                bh_result->b_size = (1 << inode->i_blkbits);
+        return ret;
+}
+
+static ssize_t
+udf_direct_IO(int rw, struct kiocb *iocb, const struct iovec *iov,
+                        loff_t offset, unsigned long nr_segs)
+{
+       struct file *file = iocb->ki_filp;
+       struct inode *inode = file->f_mapping->host;
+
+       return blockdev_direct_IO(rw, iocb, inode, inode->i_sb->s_bdev, iov,
+                       offset, nr_segs, udf_get_blocks, NULL);
+}                       
+
+
+
+
 struct address_space_operations udf_aops = {
 	.readpage		= udf_readpage,
 	.writepage		= udf_writepage,
@@ -142,6 +170,7 @@ struct address_space_operations udf_aops = {
 	.prepare_write		= udf_prepare_write,
 	.commit_write		= generic_commit_write,
 	.bmap			= udf_bmap,
+        .direct_IO              = udf_direct_IO,
 };
 
 void udf_expand_file_adinicb(struct inode * inode, int newsize, int * err)
@@ -1025,14 +1054,22 @@ static void udf_fill_inode(struct inode *inode, struct buffer_head *bh)
 	{
 		UDF_I_EFE(inode) = 1;
 		UDF_I_USE(inode) = 0;
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+		UDF_I_DATA(inode) = kmalloc(inode->i_sb->s_blocksize - sizeof(struct extendedFileEntry), GFP_KERNEL|GFP_DMA);
+#else
 		UDF_I_DATA(inode) = kmalloc(inode->i_sb->s_blocksize - sizeof(struct extendedFileEntry), GFP_KERNEL);
+#endif
 		memcpy(UDF_I_DATA(inode), bh->b_data + sizeof(struct extendedFileEntry), inode->i_sb->s_blocksize - sizeof(struct extendedFileEntry));
 	}
 	else if (le16_to_cpu(fe->descTag.tagIdent) == TAG_IDENT_FE)
 	{
 		UDF_I_EFE(inode) = 0;
 		UDF_I_USE(inode) = 0;
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+		UDF_I_DATA(inode) = kmalloc(inode->i_sb->s_blocksize - sizeof(struct fileEntry), GFP_KERNEL|GFP_DMA);
+#else
 		UDF_I_DATA(inode) = kmalloc(inode->i_sb->s_blocksize - sizeof(struct fileEntry), GFP_KERNEL);
+#endif
 		memcpy(UDF_I_DATA(inode), bh->b_data + sizeof(struct fileEntry), inode->i_sb->s_blocksize - sizeof(struct fileEntry));
 	}
 	else if (le16_to_cpu(fe->descTag.tagIdent) == TAG_IDENT_USE)
@@ -1042,7 +1079,11 @@ static void udf_fill_inode(struct inode *inode, struct buffer_head *bh)
 		UDF_I_LENALLOC(inode) =
 			le32_to_cpu(
 				((struct unallocSpaceEntry *)bh->b_data)->lengthAllocDescs);
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+		UDF_I_DATA(inode) = kmalloc(inode->i_sb->s_blocksize - sizeof(struct unallocSpaceEntry), GFP_KERNEL|GFP_DMA);
+#else
 		UDF_I_DATA(inode) = kmalloc(inode->i_sb->s_blocksize - sizeof(struct unallocSpaceEntry), GFP_KERNEL);
+#endif
 		memcpy(UDF_I_DATA(inode), bh->b_data + sizeof(struct unallocSpaceEntry), inode->i_sb->s_blocksize - sizeof(struct unallocSpaceEntry));
 		return;
 	}
@@ -1211,6 +1252,10 @@ static void udf_fill_inode(struct inode *inode, struct buffer_head *bh)
 			inode->i_mode = S_IFLNK|S_IRWXUGO;
 			break;
 		}
+		case ICBTAG_FILE_TYPE_MAIN:
+		case ICBTAG_FILE_TYPE_MIRROR:
+		case ICBTAG_FILE_TYPE_BITMAP:
+			break;
 		default:
 		{
 			printk(KERN_ERR "udf: udf_fill_inode(ino %ld) failed unknown file type=%d\n",

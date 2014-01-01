@@ -86,33 +86,47 @@ int sr_do_ioctl(Scsi_CD *cd, struct packet_command *cgc)
 {
 	struct scsi_request *SRpnt;
 	struct scsi_device *SDev;
-        struct request *req;
+	struct request *req;
 	int result, err = 0, retries = 0;
 
 	SDev = cd->device;
+
+#if defined (CONFIG_MIPS_BCM7440)
+	if (!SDev->use_12_for_rw && (cgc->cmd[0] == READ_12)) {
+		/*
+		 * We are getting READ_12 commands via ioctl. Return
+		 * error to the caller to signal the illegal nature
+		 * for this device.
+		 */
+		printk("%s: Received READ_12 but use_12_for_rw == 0, EIO!\n", __FUNCTION__);
+		err = -EIO;
+		goto out;
+	}
+#endif
+
 	SRpnt = scsi_allocate_request(SDev, GFP_KERNEL);
-        if (!SRpnt) {
-                printk(KERN_ERR "Unable to allocate SCSI request in sr_do_ioctl");
+	if (!SRpnt) {
+		printk(KERN_ERR "Unable to allocate SCSI request in sr_do_ioctl");
 		err = -ENOMEM;
 		goto out;
-        }
+	}
 	SRpnt->sr_data_direction = cgc->data_direction;
 
-      retry:
+retry:
 	if (!scsi_block_when_processing_errors(SDev)) {
 		err = -ENODEV;
 		goto out_free;
 	}
 
 	scsi_wait_req(SRpnt, cgc->cmd, cgc->buffer, cgc->buflen,
-		      cgc->timeout, IOCTL_RETRIES);
+			  cgc->timeout, IOCTL_RETRIES);
 
 	req = SRpnt->sr_request;
 	if (SRpnt->sr_buffer && req->buffer && SRpnt->sr_buffer != req->buffer) {
 		memcpy(req->buffer, SRpnt->sr_buffer, SRpnt->sr_bufflen);
 		kfree(SRpnt->sr_buffer);
 		SRpnt->sr_buffer = req->buffer;
-        }
+	}
 
 	result = SRpnt->sr_result;
 
@@ -129,10 +143,21 @@ int sr_do_ioctl(Scsi_CD *cd, struct packet_command *cgc)
 			break;
 		case NOT_READY:	/* This happens if there is no disc in drive */
 			if (SRpnt->sr_sense_buffer[12] == 0x04 &&
-			    SRpnt->sr_sense_buffer[13] == 0x01) {
+				SRpnt->sr_sense_buffer[13] == 0x01) {
 				/* sense: Logical unit is in process of becoming ready */
 				if (!cgc->quiet)
-					printk(KERN_INFO "%s: CDROM not ready yet.\n", cd->cdi.name);
+					printk("%s: CDROM not ready yet.\n", cd->cdi.name);
+#if 0
+/*#if defined(CONFIG_MIPS_BCM7440)*/
+				else
+					printk("%s: CDROM not ready yet.\n", cd->cdi.name);
+				/*
+				** Broadcom requires that these retries not occur for
+				** optical/removable devices.
+				*/
+				if (SDev->removable)
+					retries = 10;
+#endif
 				if (retries++ < 10) {
 					/* sleep 2 sec and try again */
 					ssleep(2);
@@ -153,7 +178,7 @@ int sr_do_ioctl(Scsi_CD *cd, struct packet_command *cgc)
 		case ILLEGAL_REQUEST:
 			err = -EIO;
 			if (SRpnt->sr_sense_buffer[12] == 0x20 &&
-			    SRpnt->sr_sense_buffer[13] == 0x00)
+				SRpnt->sr_sense_buffer[13] == 0x00)
 				/* sense: Invalid command operation code */
 				err = -EDRIVE_CANT_DO_THIS;
 #ifdef DEBUG
@@ -161,6 +186,18 @@ int sr_do_ioctl(Scsi_CD *cd, struct packet_command *cgc)
 			scsi_print_req_sense("sr", SRpnt);
 #endif
 			break;
+
+#if defined (CONFIG_MIPS_BCM7440)
+		case MEDIUM_ERROR:
+			printk("%s: MEDIUM ERROR - EIO\n", __FUNCTION__);
+			err = -EIO;
+#ifdef DEBUG
+			__scsi_print_command(cgc->cmd);
+			print_req_sense("sr", SRpnt);
+#endif
+			break;
+#endif
+
 		default:
 			printk(KERN_ERR "%s: CDROM (ioctl) error, command: ", cd->cdi.name);
 			__scsi_print_command(cgc->cmd);
@@ -173,10 +210,10 @@ int sr_do_ioctl(Scsi_CD *cd, struct packet_command *cgc)
 		memcpy(cgc->sense, SRpnt->sr_sense_buffer, sizeof(*cgc->sense));
 
 	/* Wake up a process waiting for device */
-      out_free:
+out_free:
 	scsi_release_request(SRpnt);
 	SRpnt = NULL;
-      out:
+out:
 	cgc->stat = err;
 	return err;
 }
@@ -278,7 +315,11 @@ int sr_get_mcn(struct cdrom_device_info *cdi, struct cdrom_mcn *mcn)
 {
 	Scsi_CD *cd = cdi->handle;
 	struct packet_command cgc;
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	char *buffer = kmalloc(32, GFP_KERNEL | GFP_DMA);
+#else
 	char *buffer = kmalloc(32, GFP_KERNEL | SR_GFP_DMA(cd));
+#endif
 	int result;
 
 	if (!buffer)
@@ -340,7 +381,11 @@ int sr_audio_ioctl(struct cdrom_device_info *cdi, unsigned int cmd, void *arg)
 	Scsi_CD *cd = cdi->handle;
 	struct packet_command cgc;
 	int result;
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	unsigned char *buffer = kmalloc(32, GFP_KERNEL | GFP_DMA);
+#else
 	unsigned char *buffer = kmalloc(32, GFP_KERNEL | SR_GFP_DMA(cd));
+#endif
 
 	if (!buffer)
 		return -ENOMEM;
@@ -493,7 +538,7 @@ static int sr_read_sector(Scsi_CD *cd, int lba, int blksize, unsigned char *dest
 		if (-EDRIVE_CANT_DO_THIS != rc)
 			return rc;
 		cd->readcd_known = 0;
-		printk("CDROM does'nt support READ CD (0xbe) command\n");
+		printk("CDROM doesn't support READ CD (0xbe) command\n");
 		/* fall & retry the other way */
 	}
 	/* ... if this fails, we switch the blocksize using MODE SELECT */
@@ -506,12 +551,25 @@ static int sr_read_sector(Scsi_CD *cd, int lba, int blksize, unsigned char *dest
 #endif
 
 	memset(&cgc, 0, sizeof(struct packet_command));
+
+#if defined (CONFIG_MIPS_BCM7440)
+	if (cd->device->use_12_for_rw) {
+		cgc.cmd[0]  = GPCMD_READ_12;
+		cgc.cmd[9]  = 1;
+		cgc.cmd[10] = 0x80;
+	}
+	else {
+		cgc.cmd[0]  = GPCMD_READ_10;
+		cgc.cmd[8]  = 1;
+	}
+#else
 	cgc.cmd[0] = GPCMD_READ_10;
+	cgc.cmd[8] = 1;
+#endif
 	cgc.cmd[2] = (unsigned char) (lba >> 24) & 0xff;
 	cgc.cmd[3] = (unsigned char) (lba >> 16) & 0xff;
 	cgc.cmd[4] = (unsigned char) (lba >> 8) & 0xff;
 	cgc.cmd[5] = (unsigned char) lba & 0xff;
-	cgc.cmd[8] = 1;
 	cgc.buffer = dest;
 	cgc.buflen = blksize;
 	cgc.data_direction = DMA_FROM_DEVICE;
@@ -534,7 +592,11 @@ int sr_is_xa(Scsi_CD *cd)
 	if (!xa_test)
 		return 0;
 
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	raw_sector = (unsigned char *) kmalloc(2048, GFP_KERNEL | GFP_DMA);
+#else
 	raw_sector = (unsigned char *) kmalloc(2048, GFP_KERNEL | SR_GFP_DMA(cd));
+#endif
 	if (!raw_sector)
 		return -ENOMEM;
 	if (0 == sr_read_sector(cd, cd->ms_offset + 16,

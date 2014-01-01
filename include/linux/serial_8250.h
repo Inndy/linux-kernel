@@ -23,6 +23,7 @@ struct plat_serial8250_port {
 	unsigned char	regshift;	/* register shift */
 	unsigned char	iotype;		/* UPIO_* */
 	unsigned int	flags;		/* UPF_* flags */
+	unsigned int	line;		/* logical line number */
 };
 
 #endif

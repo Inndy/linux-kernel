@@ -103,6 +103,10 @@ struct scsi_device {
 				 * this device */
 	unsigned expecting_cc_ua:1; /* Expecting a CHECK_CONDITION/UNIT_ATTN
 				     * because we did a bus reset. */
+#if defined(CONFIG_MIPS_BCM7440)
+	unsigned use_12_for_rw:1; /* first try 12-byte read / write */
+	unsigned r10_fallback_ok:1; /* OK to fall back to 10-byte read if 12-byte read illegal */
+#endif
 	unsigned use_10_for_rw:1; /* first try 10-byte read / write */
 	unsigned use_10_for_ms:1; /* first try 10-byte mode sense/select */
 	unsigned skip_ms_page_8:1;	/* do not use MODE SENSE page 0x08 */
@@ -125,6 +129,9 @@ struct scsi_device {
 	atomic_t ioerr_cnt;
 
 	int timeout;
+#if defined(CONFIG_MIPS_BCM7440)
+	int r12_cnt;             /* device READ_12 count */
+#endif
 
 	struct device		sdev_gendev;
 	struct class_device	sdev_classdev;

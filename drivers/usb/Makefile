@@ -72,3 +72,6 @@ obj-$(CONFIG_USB_PHIDGETSERVO)	+= misc/
 
 obj-$(CONFIG_USB_ATM)		+= atm/
 obj-$(CONFIG_USB_SPEEDTOUCH)	+= atm/
+
+# (-:  HUMAX ENTAVIO BLUETOOTH   :-)
+obj-$(CONFIG_USB_BLUETOOTH)	+= bluetooth/src/

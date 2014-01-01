@@ -220,6 +220,9 @@ enum rq_flag_bits {
 	__REQ_BAR_PREFLUSH,	/* barrier pre-flush done */
 	__REQ_BAR_POSTFLUSH,	/* barrier post-flush */
 	__REQ_BAR_FLUSH,	/* rq is the flush request */
+#if defined (CONFIG_MIPS_BCM7440)
+	__REQ_DIRECTIO,     /* original file-based request was O_DIRECT */
+#endif
 	__REQ_NR_BITS,		/* stops here */
 };
 

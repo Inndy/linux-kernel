@@ -5,11 +5,11 @@
  *
  * This code is GPL
  *
- * $Id: mtdpart.c,v 1.51 2004/11/16 18:28:59 dwmw2 Exp $
+ * $Id: mtdpart.c,v 1.56 2005/11/29 16:00:23 vwool Exp $
  *
  * 	02-21-2002	Thomas Gleixner <gleixner@autronix.de>
  *			added support for read_oob, write_oob
- */	
+ */
 
 #include <linux/module.h>
 #include <linux/types.h>
@@ -41,13 +41,13 @@ struct mtd_part {
  */
 #define PART(x)  ((struct mtd_part *)(x))
 
-	
-/* 
+
+/*
  * MTD methods which simply translate the effective address and pass through
  * to the _real_ device.
  */
 
-static int part_read (struct mtd_info *mtd, loff_t from, size_t len, 
+static int part_read (struct mtd_info *mtd, loff_t from, size_t len,
 			size_t *retlen, u_char *buf)
 {
 	struct mtd_part *part = PART(mtd);
@@ -55,15 +55,15 @@ static int part_read (struct mtd_info *mtd, loff_t from, size_t len,
 		len = 0;
 	else if (from + len > mtd->size)
 		len = mtd->size - from;
-	if (part->master->read_ecc == NULL)	
-		return part->master->read (part->master, from + part->offset, 
+	if (part->master->read_ecc == NULL)
+		return part->master->read (part->master, from + part->offset,
 					len, retlen, buf);
 	else
-		return part->master->read_ecc (part->master, from + part->offset, 
+		return part->master->read_ecc (part->master, from + part->offset,
 					len, retlen, buf, NULL, &mtd->oobinfo);
 }
 
-static int part_point (struct mtd_info *mtd, loff_t from, size_t len, 
+static int part_point (struct mtd_info *mtd, loff_t from, size_t len,
 			size_t *retlen, u_char **buf)
 {
 	struct mtd_part *part = PART(mtd);
@@ -71,7 +71,7 @@ static int part_point (struct mtd_info *mtd, loff_t from, size_t len,
 		len = 0;
 	else if (from + len > mtd->size)
 		len = mtd->size - from;
-	return part->master->point (part->master, from + part->offset, 
+	return part->master->point (part->master, from + part->offset,
 				    len, retlen, buf);
 }
 static void part_unpoint (struct mtd_info *mtd, u_char *addr, loff_t from, size_t len)
@@ -82,7 +82,7 @@ static void part_unpoint (struct mtd_info *mtd, u_char *addr, loff_t from, size_
 }
 
 
-static int part_read_ecc (struct mtd_info *mtd, loff_t from, size_t len, 
+static int part_read_ecc (struct mtd_info *mtd, loff_t from, size_t len,
 			size_t *retlen, u_char *buf, u_char *eccbuf, struct nand_oobinfo *oobsel)
 {
 	struct mtd_part *part = PART(mtd);
@@ -92,11 +92,11 @@ static int part_read_ecc (struct mtd_info *mtd, loff_t from, size_t len,
 		len = 0;
 	else if (from + len > mtd->size)
 		len = mtd->size - from;
-	return part->master->read_ecc (part->master, from + part->offset, 
+	return part->master->read_ecc (part->master, from + part->offset,
 					len, retlen, buf, eccbuf, oobsel);
 }
 
-static int part_read_oob (struct mtd_info *mtd, loff_t from, size_t len, 
+static int part_read_oob (struct mtd_info *mtd, loff_t from, size_t len,
 			size_t *retlen, u_char *buf)
 {
 	struct mtd_part *part = PART(mtd);
@@ -104,24 +104,50 @@ static int part_read_oob (struct mtd_info *mtd, loff_t from, size_t len,
 		len = 0;
 	else if (from + len > mtd->size)
 		len = mtd->size - from;
-	return part->master->read_oob (part->master, from + part->offset, 
+	return part->master->read_oob (part->master, from + part->offset,
 					len, retlen, buf);
 }
 
-static int part_read_user_prot_reg (struct mtd_info *mtd, loff_t from, size_t len, 
+static int part_read_oobfree (struct mtd_info *mtd, loff_t from, size_t len, 
 			size_t *retlen, u_char *buf)
 {
 	struct mtd_part *part = PART(mtd);
-	return part->master->read_user_prot_reg (part->master, from, 
+	if (from >= mtd->size)
+		len = 0;
+	else if (from + len > mtd->size)
+		len = mtd->size - from;
+	return part->master->read_oobfree (part->master, from + part->offset, 
 					len, retlen, buf);
 }
 
-static int part_read_fact_prot_reg (struct mtd_info *mtd, loff_t from, size_t len, 
+static int part_read_user_prot_reg (struct mtd_info *mtd, loff_t from, size_t len,
 			size_t *retlen, u_char *buf)
 {
 	struct mtd_part *part = PART(mtd);
-	return part->master->read_fact_prot_reg (part->master, from, 
+	return part->master->read_user_prot_reg (part->master, from,
 					len, retlen, buf);
+}
+
+static int part_get_user_prot_info (struct mtd_info *mtd,
+				    struct otp_info *buf, size_t len)
+{
+	struct mtd_part *part = PART(mtd);
+	return part->master->get_user_prot_info (part->master, buf, len);
+}
+
+static int part_read_fact_prot_reg (struct mtd_info *mtd, loff_t from, size_t len,
+			size_t *retlen, u_char *buf)
+{
+	struct mtd_part *part = PART(mtd);
+	return part->master->read_fact_prot_reg (part->master, from,
+					len, retlen, buf);
+}
+
+static int part_get_fact_prot_info (struct mtd_info *mtd,
+				    struct otp_info *buf, size_t len)
+{
+	struct mtd_part *part = PART(mtd);
+	return part->master->get_fact_prot_info (part->master, buf, len);
 }
 
 static int part_write (struct mtd_info *mtd, loff_t to, size_t len,
@@ -134,13 +160,13 @@ static int part_write (struct mtd_info *mtd, loff_t to, size_t len,
 		len = 0;
 	else if (to + len > mtd->size)
 		len = mtd->size - to;
-	if (part->master->write_ecc == NULL)	
-		return part->master->write (part->master, to + part->offset, 
+	if (part->master->write_ecc == NULL)
+		return part->master->write (part->master, to + part->offset,
 					len, retlen, buf);
 	else
-		return part->master->write_ecc (part->master, to + part->offset, 
+		return part->master->write_ecc (part->master, to + part->offset,
 					len, retlen, buf, NULL, &mtd->oobinfo);
-							
+
 }
 
 static int part_write_ecc (struct mtd_info *mtd, loff_t to, size_t len,
@@ -156,7 +182,7 @@ static int part_write_ecc (struct mtd_info *mtd, loff_t to, size_t len,
 		len = 0;
 	else if (to + len > mtd->size)
 		len = mtd->size - to;
-	return part->master->write_ecc (part->master, to + part->offset, 
+	return part->master->write_ecc (part->master, to + part->offset,
 					len, retlen, buf, eccbuf, oobsel);
 }
 
@@ -170,16 +196,36 @@ static int part_write_oob (struct mtd_info *mtd, loff_t to, size_t len,
 		len = 0;
 	else if (to + len > mtd->size)
 		len = mtd->size - to;
-	return part->master->write_oob (part->master, to + part->offset, 
+	return part->master->write_oob (part->master, to + part->offset,
 					len, retlen, buf);
 }
 
-static int part_write_user_prot_reg (struct mtd_info *mtd, loff_t from, size_t len, 
+static int part_write_oobfree (struct mtd_info *mtd, loff_t to, size_t len,
+			size_t *retlen, const u_char *buf)
+{
+	struct mtd_part *part = PART(mtd);
+	if (!(mtd->flags & MTD_WRITEABLE))
+		return -EROFS;
+	if (to >= mtd->size)
+		len = 0;
+	else if (to + len > mtd->size)
+		len = mtd->size - to;
+	return part->master->write_oobfree (part->master, to + part->offset, 
+					len, retlen, buf);
+}
+
+static int part_write_user_prot_reg (struct mtd_info *mtd, loff_t from, size_t len,
 			size_t *retlen, u_char *buf)
 {
 	struct mtd_part *part = PART(mtd);
-	return part->master->write_user_prot_reg (part->master, from, 
+	return part->master->write_user_prot_reg (part->master, from,
 					len, retlen, buf);
+}
+
+static int part_lock_user_prot_reg (struct mtd_info *mtd, loff_t from, size_t len)
+{
+	struct mtd_part *part = PART(mtd);
+	return part->master->lock_user_prot_reg (part->master, from, len);
 }
 
 static int part_writev (struct mtd_info *mtd,  const struct kvec *vecs,
@@ -188,7 +234,7 @@ static int part_writev (struct mtd_info *mtd,  const struct kvec *vecs,
 	struct mtd_part *part = PART(mtd);
 	if (!(mtd->flags & MTD_WRITEABLE))
 		return -EROFS;
-	if (part->master->writev_ecc == NULL)	
+	if (part->master->writev_ecc == NULL)
 		return part->master->writev (part->master, vecs, count,
 					to + part->offset, retlen);
 	else
@@ -201,12 +247,12 @@ static int part_readv (struct mtd_info *mtd,  struct kvec *vecs,
 			 unsigned long count, loff_t from, size_t *retlen)
 {
 	struct mtd_part *part = PART(mtd);
-	if (part->master->readv_ecc == NULL)	
+	if (part->master->readv_ecc == NULL)
 		return part->master->readv (part->master, vecs, count,
 					from + part->offset, retlen);
 	else
 		return part->master->readv_ecc (part->master, vecs, count,
-					from + part->offset, retlen, 
+					from + part->offset, retlen,
 					NULL, &mtd->oobinfo);
 }
 
@@ -232,7 +278,7 @@ static int part_readv_ecc (struct mtd_info *mtd,  struct kvec *vecs,
 	if (oobsel == NULL)
 		oobsel = &mtd->oobinfo;
 	return part->master->readv_ecc (part->master, vecs, count,
-					from + part->offset, retlen, 
+					from + part->offset, retlen,
 					eccbuf, oobsel);
 }
 
@@ -266,7 +312,7 @@ EXPORT_SYMBOL_GPL(mtd_erase_callback);
 static int part_lock (struct mtd_info *mtd, loff_t ofs, size_t len)
 {
 	struct mtd_part *part = PART(mtd);
-	if ((len + ofs) > mtd->size) 
+	if ((len + ofs) > mtd->size)
 		return -EINVAL;
 	return part->master->lock(part->master, ofs + part->offset, len);
 }
@@ -274,7 +320,7 @@ static int part_lock (struct mtd_info *mtd, loff_t ofs, size_t len)
 static int part_unlock (struct mtd_info *mtd, loff_t ofs, size_t len)
 {
 	struct mtd_part *part = PART(mtd);
-	if ((len + ofs) > mtd->size) 
+	if ((len + ofs) > mtd->size)
 		return -EINVAL;
 	return part->master->unlock(part->master, ofs + part->offset, len);
 }
@@ -295,6 +341,12 @@ static void part_resume(struct mtd_info *mtd)
 {
 	struct mtd_part *part = PART(mtd);
 	part->master->resume(part->master);
+}
+// JHK 08.03.09
+static int part_getcfiids(struct mtd_info *mtd, unsigned char ids)
+{
+	struct mtd_part *part = PART(mtd);
+	return part->master->getcfiids(part->master, ids);
 }
 
 static int part_block_isbad (struct mtd_info *mtd, loff_t ofs)
@@ -317,8 +369,8 @@ static int part_block_markbad (struct mtd_info *mtd, loff_t ofs)
 	return part->master->block_markbad(part->master, ofs);
 }
 
-/* 
- * This function unregisters and destroy all slave MTD objects which are 
+/*
+ * This function unregisters and destroy all slave MTD objects which are
  * attached to the given master MTD object.
  */
 
@@ -351,11 +403,16 @@ int del_mtd_partitions(struct mtd_info *master)
  * (Q: should we register the master MTD object as well?)
  */
 
-int add_mtd_partitions(struct mtd_info *master, 
+int add_mtd_partitions(struct mtd_info *master,
 		       const struct mtd_partition *parts,
 		       int nbparts)
 {
 	struct mtd_part *slave;
+//hmx.modify.hee.plat2.starts
+	struct mtd_part *part2unlock;
+	u_char readdata=0;
+	size_t rdcnt=0;
+//hmx.modify.hee.plat2.ends
 	u_int32_t cur_offset = 0;
 	int i;
 
@@ -380,6 +437,7 @@ int add_mtd_partitions(struct mtd_info *master,
 		slave->mtd.size = parts[i].size;
 		slave->mtd.oobblock = master->oobblock;
 		slave->mtd.oobsize = master->oobsize;
+		slave->mtd.oobavail = master->oobavail;
 		slave->mtd.ecctype = master->ecctype;
 		slave->mtd.eccsize = master->eccsize;
 
@@ -394,7 +452,7 @@ int add_mtd_partitions(struct mtd_info *master,
 			slave->mtd.point = part_point;
 			slave->mtd.unpoint = part_unpoint;
 		}
-		
+
 		if (master->read_ecc)
 			slave->mtd.read_ecc = part_read_ecc;
 		if (master->write_ecc)
@@ -403,12 +461,22 @@ int add_mtd_partitions(struct mtd_info *master,
 			slave->mtd.read_oob = part_read_oob;
 		if (master->write_oob)
 			slave->mtd.write_oob = part_write_oob;
+		if (master->read_oobfree)
+			slave->mtd.read_oobfree = part_read_oobfree;
+		if (master->write_oobfree)
+			slave->mtd.write_oobfree = part_write_oobfree;
 		if(master->read_user_prot_reg)
 			slave->mtd.read_user_prot_reg = part_read_user_prot_reg;
 		if(master->read_fact_prot_reg)
 			slave->mtd.read_fact_prot_reg = part_read_fact_prot_reg;
 		if(master->write_user_prot_reg)
 			slave->mtd.write_user_prot_reg = part_write_user_prot_reg;
+		if(master->lock_user_prot_reg)
+			slave->mtd.lock_user_prot_reg = part_lock_user_prot_reg;
+		if(master->get_user_prot_info)
+			slave->mtd.get_user_prot_info = part_get_user_prot_info;
+		if(master->get_fact_prot_info)
+			slave->mtd.get_fact_prot_info = part_get_fact_prot_info;
 		if (master->sync)
 			slave->mtd.sync = part_sync;
 		if (!i && master->suspend && master->resume) {
@@ -427,6 +495,8 @@ int add_mtd_partitions(struct mtd_info *master,
 			slave->mtd.lock = part_lock;
 		if (master->unlock)
 			slave->mtd.unlock = part_unlock;
+		if (master->getcfiids)// JHK 08.03.09
+			slave->mtd.getcfiids = part_getcfiids;		
 		if (master->block_isbad)
 			slave->mtd.block_isbad = part_block_isbad;
 		if (master->block_markbad)
@@ -439,9 +509,10 @@ int add_mtd_partitions(struct mtd_info *master,
 		if (slave->offset == MTDPART_OFS_APPEND)
 			slave->offset = cur_offset;
 		if (slave->offset == MTDPART_OFS_NXTBLK) {
-			u_int32_t emask = master->erasesize-1;
-			slave->offset = (cur_offset + emask) & ~emask;
-			if (slave->offset != cur_offset) {
+			slave->offset = cur_offset;
+			if ((cur_offset % master->erasesize) != 0) {
+				/* Round up to next erasesize */
+				slave->offset = ((cur_offset / master->erasesize) + 1) * master->erasesize;
 				printk(KERN_NOTICE "Moving partition %d: "
 				       "0x%08x -> 0x%08x\n", i,
 				       cur_offset, slave->offset);
@@ -450,9 +521,14 @@ int add_mtd_partitions(struct mtd_info *master,
 		if (slave->mtd.size == MTDPART_SIZ_FULL)
 			slave->mtd.size = master->size - slave->offset;
 		cur_offset = slave->offset + slave->mtd.size;
-	
-		printk (KERN_NOTICE "0x%08x-0x%08x : \"%s\"\n", slave->offset, 
+
+		printk (KERN_NOTICE "0x%08x-0x%08x : \"%s\"\n", slave->offset,
 			slave->offset + slave->mtd.size, slave->mtd.name);
+
+//hmx.modify.hee.plat2.starts
+		if(i==2)
+			part2unlock = slave;
+//hmx.modify.hee.plat2.ends
 
 		/* let's do some sanity checks */
 		if (slave->offset >= master->size) {
@@ -471,7 +547,7 @@ int add_mtd_partitions(struct mtd_info *master,
 			/* Deal with variable erase size stuff */
 			int i;
 			struct mtd_erase_region_info *regions = master->eraseregions;
-			
+
 			/* Find the first erase regions which is part of this partition. */
 			for (i=0; i < master->numeraseregions && slave->offset >= regions[i].offset; i++)
 				;
@@ -486,7 +562,7 @@ int add_mtd_partitions(struct mtd_info *master,
 			slave->mtd.erasesize = master->erasesize;
 		}
 
-		if ((slave->mtd.flags & MTD_WRITEABLE) && 
+		if ((slave->mtd.flags & MTD_WRITEABLE) &&
 		    (slave->offset % slave->mtd.erasesize)) {
 			/* Doesn't start on a boundary of major erase size */
 			/* FIXME: Let it be writable if it is on a boundary of _minor_ erase size though */
@@ -494,14 +570,14 @@ int add_mtd_partitions(struct mtd_info *master,
 			printk ("mtd: partition \"%s\" doesn't start on an erase block boundary -- force read-only\n",
 				parts[i].name);
 		}
-		if ((slave->mtd.flags & MTD_WRITEABLE) && 
+		if ((slave->mtd.flags & MTD_WRITEABLE) &&
 		    (slave->mtd.size % slave->mtd.erasesize)) {
 			slave->mtd.flags &= ~MTD_WRITEABLE;
 			printk ("mtd: partition \"%s\" doesn't end on an erase block -- force read-only\n",
 				parts[i].name);
 		}
 
-		/* copy oobinfo from master */ 
+		/* copy oobinfo from master */
 		memcpy(&slave->mtd.oobinfo, &master->oobinfo, sizeof(slave->mtd.oobinfo));
 
 		if(parts[i].mtdp)
@@ -517,6 +593,10 @@ int add_mtd_partitions(struct mtd_info *master,
 		}
 	}
 
+//hmx.modify.hee.plat2.starts
+	part_unlock((struct mtd_info *)part2unlock,0,part2unlock->mtd.size);
+	part_read((struct mtd_info *)part2unlock,0,1,&rdcnt,&readdata);
+//hmx.modify.hee.plat2.ends
 	return 0;
 }
 
@@ -562,12 +642,12 @@ int deregister_mtd_parser(struct mtd_part_parser *p)
 	return 0;
 }
 
-int parse_mtd_partitions(struct mtd_info *master, const char **types, 
+int parse_mtd_partitions(struct mtd_info *master, const char **types,
 			 struct mtd_partition **pparts, unsigned long origin)
 {
 	struct mtd_part_parser *parser;
 	int ret = 0;
-		
+
 	for ( ; ret <= 0 && *types; types++) {
 		parser = get_partition_parser(*types);
 #ifdef CONFIG_KMOD
@@ -581,7 +661,7 @@ int parse_mtd_partitions(struct mtd_info *master, const char **types,
 		}
 		ret = (*parser->parse_fn)(master, pparts, origin);
 		if (ret > 0) {
-			printk(KERN_NOTICE "%d %s partitions found on MTD device %s\n", 
+			printk(KERN_NOTICE "%d %s partitions found on MTD device %s\n",
 			       ret, parser->name, master->name);
 		}
 		put_partition_parser(parser);

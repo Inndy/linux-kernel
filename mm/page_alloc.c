@@ -38,6 +38,10 @@
 #include <asm/tlbflush.h>
 #include "internal.h"
 
+#if defined( CONFIG_MIPS_BRCM97XXX ) && defined ( CONFIG_DISCONTIGMEM )
+#include <asm/mmzone.h>
+#endif
+
 /*
  * MCD - HACK: Find somewhere to initialize this EARLY, or make this
  * initializer cleaner
@@ -313,7 +317,7 @@ static inline void __free_pages_bulk (struct page *page,
 
 static inline void free_pages_check(const char *function, struct page *page)
 {
-	if (	page_mapcount(page) ||
+	if (page_mapcount(page) ||
 		page->mapping != NULL ||
 		page_count(page) != 0 ||
 		(page->flags & (
@@ -757,6 +761,25 @@ __alloc_pages(unsigned int __nocast gfp_mask, unsigned int order,
 		/* Should this ever happen?? */
 		return NULL;
 	}
+/* JWF: this debug code can eventuall be removed */
+       if (zones[0] == 0) {
+               printk(KERN_WARNING "_alloc_page: NULL zone\n");
+               BUG();
+       }
+       if (kern_addr_valid (zones[0]) == 0) {
+               printk(KERN_WARNING "_alloc_page: invalid zone 0x%p flags 0x%x\n", zones[0], gfp_mask);
+               BUG();
+       }
+       if  (zones[0]->zone_pgdat == 0) {
+               printk(KERN_WARNING "_alloc_page: NULL zone->zone_pgdat\n");
+               BUG();
+       }
+       if  (zones[0]->zone_pgdat->node_zones == 0) {
+               printk(KERN_WARNING "_alloc_page: NULL zone->zone_pgdat->node_zones\n");
+               BUG();
+       }
+/* end of debug */
+
 
 	classzone_idx = zone_idx(zones[0]);
 
@@ -1328,6 +1351,9 @@ void show_free_areas(void)
  */
 static int __init build_zonelists_node(pg_data_t *pgdat, struct zonelist *zonelist, int j, int k)
 {
+
+	zonelist->zones[j] = (struct zone *)0;
+
 	switch (k) {
 		struct zone *zone;
 	default:

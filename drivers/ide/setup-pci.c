@@ -53,6 +53,7 @@ static ide_hwif_t *ide_match_hwif(unsigned long io_base, u8 bootable, const char
 	int h;
 	ide_hwif_t *hwif;
 
+
 	/*
 	 * Look for a hwif with matching io_base specified using
 	 * parameters to ide_setup().
@@ -229,6 +230,8 @@ second_chance_to_dma:
 			case PCI_DEVICE_ID_AMD_VIPER_7409:
 			case PCI_DEVICE_ID_CMD_643:
 			case PCI_DEVICE_ID_SERVERWORKS_CSB5IDE:
+			case PCI_DEVICE_ID_SERVERWORKS_BCM7038:
+				//printk("setting dma_base for %x=%x\n", dev->device, dma_base);
 				simplex_stat = hwif->INB(dma_base + 2);
 				hwif->OUTB((simplex_stat&0x60),(dma_base + 2));
 				simplex_stat = hwif->INB(dma_base + 2);
@@ -426,8 +429,12 @@ static ide_hwif_t *ide_hwif_configure(struct pci_dev *dev, ide_pci_device_t *d, 
 		ctl = port ? 0x374 : 0x3f4;
 		base = port ? 0x170 : 0x1f0;
 	}
+
+
 	if ((hwif = ide_match_hwif(base, d->bootable, d->name)) == NULL)
 		return NULL;	/* no room in ide_hwifs[] */
+
+
 	if (hwif->io_ports[IDE_DATA_OFFSET] != base ||
 	    hwif->io_ports[IDE_CONTROL_OFFSET] != (ctl | 2)) {
 		memset(&hwif->hw, 0, sizeof(hwif->hw));
@@ -623,22 +630,26 @@ controller_ok:
 		}
 
 		
-		if (d->init_iops)
+		if (d->init_iops) {
 			d->init_iops(hwif);
+		}
 
 		if (d->autodma == NODMA)
 			goto bypass_legacy_dma;
 
-		if(d->init_setup_dma)
+		if(d->init_setup_dma) {
 			d->init_setup_dma(dev, d, hwif);
-		else
+		}
+		else {
 			ide_hwif_setup_dma(dev, d, hwif);
+		}
 bypass_legacy_dma:
-		if (d->init_hwif)
+		if (d->init_hwif) {
 			/* Call chipset-specific routine
 			 * for each enabled hwif
 			 */
 			d->init_hwif(hwif);
+		}
 
 		mate = hwif;
 		at_least_one_hwif_enabled = 1;
@@ -751,6 +762,7 @@ int ide_setup_pci_devices(struct pci_dev *dev1, struct pci_dev *dev2,
 	ata_index_t index_list[2];
 	int ret, i;
 
+
 	for (i = 0; i < 2; i++) {
 		ret = do_ide_setup_pci_device(pdev[i], d, index_list + i, !i);
 		/*
@@ -766,8 +778,9 @@ int ide_setup_pci_devices(struct pci_dev *dev1, struct pci_dev *dev2,
 		int j;
 
 		for (j = 0; j < 2; j++) {
-			if ((idx[j] & 0xf0) != 0xf0)
+			if ((idx[j] & 0xf0) != 0xf0) {
 				probe_hwif_init(ide_hwifs + idx[j]);
+			}
 		}
 	}
 

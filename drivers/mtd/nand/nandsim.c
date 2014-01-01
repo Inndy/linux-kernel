@@ -3,7 +3,7 @@
  *
  * Author: Artem B. Bityuckiy <dedekind@oktetlabs.ru>, <dedekind@infradead.org>
  *
- * Copyright (C) 2004 Nokia Corporation 
+ * Copyright (C) 2004 Nokia Corporation
  *
  * Note: NS means "NAND Simulator".
  * Note: Input means input TO flash chip, output means output FROM chip.
@@ -22,7 +22,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA
  *
- * $Id: nandsim.c,v 1.7 2004/12/06 11:53:06 dedekind Exp $
+ * $Id: nandsim.c,v 1.13 2005/11/29 14:48:32 gleixner Exp $
  */
 
 #include <linux/config.h>
@@ -38,63 +38,76 @@
 #include <linux/mtd/nand.h>
 #include <linux/mtd/partitions.h>
 #include <linux/delay.h>
+
 #ifdef CONFIG_NS_ABS_POS
 #include <asm/io.h>
 #endif
 
+#define CONFIG_NANDSIM_FIRST_ID_BYTE        CONFIG_MTD_NAND_NANDSIM_FIRST_ID
+#define CONFIG_NANDSIM_SECOND_ID_BYTE       CONFIG_MTD_NAND_NANDSIM_SECOND_ID
+#define CONFIG_NANDSIM_THIRD_ID_BYTE        CONFIG_MTD_NAND_NANDSIM_THIRD_ID
+#define CONFIG_NANDSIM_FOURTH_ID_BYTE       CONFIG_MTD_NAND_NANDSIM_FOURTH_ID
 
-/* Default simulator parameters values */
-#if !defined(CONFIG_NANDSIM_FIRST_ID_BYTE)  || \
-    !defined(CONFIG_NANDSIM_SECOND_ID_BYTE) || \
-    !defined(CONFIG_NANDSIM_THIRD_ID_BYTE)  || \
-    !defined(CONFIG_NANDSIM_FOURTH_ID_BYTE)
-#define CONFIG_NANDSIM_FIRST_ID_BYTE  0x98
-#define CONFIG_NANDSIM_SECOND_ID_BYTE 0x39
-#define CONFIG_NANDSIM_THIRD_ID_BYTE  0xFF /* No byte */
-#define CONFIG_NANDSIM_FOURTH_ID_BYTE 0xFF /* No byte */
+#ifndef CONFIG_MTD_NAND_NANDSIM_ACCESS_DELAY
+#  define CONFIG_MTD_NAND_NANDSIM_ACCESS_DELAY   25
 #endif
 
-#ifndef CONFIG_NANDSIM_ACCESS_DELAY
-#define CONFIG_NANDSIM_ACCESS_DELAY 25
+#ifndef CONFIG_MTD_NAND_NANDSIM_PROGRAM_DELAY
+#  define CONFIG_MTD_NAND_NANDSIM_PROGRAM_DELAY  200
 #endif
-#ifndef CONFIG_NANDSIM_PROGRAMM_DELAY
-#define CONFIG_NANDSIM_PROGRAMM_DELAY 200
+
+#ifndef CONFIG_MTD_NAND_NANDSIM_ERASE_DELAY
+#  define CONFIG_MTD_NAND_NANDSIM_ERASE_DELAY    2
 #endif
-#ifndef CONFIG_NANDSIM_ERASE_DELAY
-#define CONFIG_NANDSIM_ERASE_DELAY 2
+
+#ifndef CONFIG_MTD_NAND_NANDSIM_OUTPUT_CYCLE
+#  define CONFIG_MTD_NAND_NANDSIM_OUTPUT_CYCLE   40
 #endif
-#ifndef CONFIG_NANDSIM_OUTPUT_CYCLE
-#define CONFIG_NANDSIM_OUTPUT_CYCLE 40
+
+#ifndef CONFIG_MTD_NAND_NANDSIM_INPUT_CYCLE
+#  define CONFIG_MTD_NAND_NANDSIM_INPUT_CYCLE    50
 #endif
-#ifndef CONFIG_NANDSIM_INPUT_CYCLE
-#define CONFIG_NANDSIM_INPUT_CYCLE  50
+
+#ifdef CONFIG_MTD_NAND_NANDSIM_16BIT_BUS
+#  define CONFIG_NANDSIM_BUS_WIDTH      16
+#else
+#  define CONFIG_NANDSIM_BUS_WIDTH      8
 #endif
-#ifndef CONFIG_NANDSIM_BUS_WIDTH
-#define CONFIG_NANDSIM_BUS_WIDTH  8
+
+#ifndef CONFIG_MTD_NAND_NANDSIM_DELAY
+#  define CONFIG_MTD_NAND_NANDSIM_DELAY 0
+#else
+#  undef CONFIG_MTD_NAND_NANDSIM_DELAY
+#  define CONFIG_MTD_NAND_NANDSIM_DELAY 1
 #endif
-#ifndef CONFIG_NANDSIM_DO_DELAYS
-#define CONFIG_NANDSIM_DO_DELAYS  0
+
+#ifndef CONFIG_MTD_NAND_NANDSIM_LOG
+#  define CONFIG_MTD_NAND_NANDSIM_LOG   0
+#else
+#  undef CONFIG_MTD_NAND_NANDSIM_LOG
+#  define CONFIG_MTD_NAND_NANDSIM_LOG   1
 #endif
-#ifndef CONFIG_NANDSIM_LOG
-#define CONFIG_NANDSIM_LOG        0
-#endif
-#ifndef CONFIG_NANDSIM_DBG
-#define CONFIG_NANDSIM_DBG        0
+
+#ifndef CONFIG_MTD_NAND_NANDSIM_DEBUG
+#  define CONFIG_MTD_NAND_NANDSIM_DEBUG 0
+#else
+#  undef CONFIG_MTD_NAND_NANDSIM_DEBUG
+#  define CONFIG_MTD_NAND_NANDSIM_DEBUG 1
 #endif
 
 static uint first_id_byte  = CONFIG_NANDSIM_FIRST_ID_BYTE;
 static uint second_id_byte = CONFIG_NANDSIM_SECOND_ID_BYTE;
 static uint third_id_byte  = CONFIG_NANDSIM_THIRD_ID_BYTE;
 static uint fourth_id_byte = CONFIG_NANDSIM_FOURTH_ID_BYTE;
-static uint access_delay   = CONFIG_NANDSIM_ACCESS_DELAY;
-static uint programm_delay = CONFIG_NANDSIM_PROGRAMM_DELAY;
-static uint erase_delay    = CONFIG_NANDSIM_ERASE_DELAY;
-static uint output_cycle   = CONFIG_NANDSIM_OUTPUT_CYCLE;
-static uint input_cycle    = CONFIG_NANDSIM_INPUT_CYCLE;
+static uint access_delay   = CONFIG_MTD_NAND_NANDSIM_ACCESS_DELAY;
+static uint programm_delay = CONFIG_MTD_NAND_NANDSIM_PROGRAM_DELAY;
+static uint erase_delay    = CONFIG_MTD_NAND_NANDSIM_ERASE_DELAY;
+static uint output_cycle   = CONFIG_MTD_NAND_NANDSIM_OUTPUT_CYCLE;
+static uint input_cycle    = CONFIG_MTD_NAND_NANDSIM_INPUT_CYCLE;
 static uint bus_width      = CONFIG_NANDSIM_BUS_WIDTH;
-static uint do_delays      = CONFIG_NANDSIM_DO_DELAYS;
-static uint log            = CONFIG_NANDSIM_LOG;
-static uint dbg            = CONFIG_NANDSIM_DBG;
+static uint do_delays      = CONFIG_MTD_NAND_NANDSIM_DELAY;
+static uint log            = CONFIG_MTD_NAND_NANDSIM_LOG;
+static uint dbg            = CONFIG_MTD_NAND_NANDSIM_DEBUG;
 
 module_param(first_id_byte,  uint, 0400);
 module_param(second_id_byte, uint, 0400);
@@ -117,8 +130,8 @@ MODULE_PARM_DESC(fourth_id_byte, "The fourth byte returned by NAND Flash 'read I
 MODULE_PARM_DESC(access_delay,   "Initial page access delay (microiseconds)");
 MODULE_PARM_DESC(programm_delay, "Page programm delay (microseconds");
 MODULE_PARM_DESC(erase_delay,    "Sector erase delay (milliseconds)");
-MODULE_PARM_DESC(output_cycle,   "Word output (from flash) time (nanodeconds)");
-MODULE_PARM_DESC(input_cycle,    "Word input (to flash) time (nanodeconds)");
+MODULE_PARM_DESC(output_cycle,   "Word output (from flash) time (nanoseconds)");
+MODULE_PARM_DESC(input_cycle,    "Word input (to flash) time (nanoseconds)");
 MODULE_PARM_DESC(bus_width,      "Chip's bus width (8- or 16-bit)");
 MODULE_PARM_DESC(do_delays,      "Simulate NAND delays using busy-waits if not zero");
 MODULE_PARM_DESC(log,            "Perform logging if not zero");
@@ -126,7 +139,7 @@ MODULE_PARM_DESC(dbg,            "Output debug information if not zero");
 
 /* The largest possible page size */
 #define NS_LARGEST_PAGE_SIZE	2048
-	
+
 /* The prefix for simulator output */
 #define NS_OUTPUT_PREFIX "[nandsim]"
 
@@ -145,7 +158,7 @@ MODULE_PARM_DESC(dbg,            "Output debug information if not zero");
         do { if (do_delays) udelay(us); } while(0)
 #define NS_MDELAY(us) \
         do { if (do_delays) mdelay(us); } while(0)
-	
+
 /* Is the nandsim structure initialized ? */
 #define NS_IS_INITIALIZED(ns) ((ns)->geom.totsz != 0)
 
@@ -153,19 +166,19 @@ MODULE_PARM_DESC(dbg,            "Output debug information if not zero");
 #define NS_STATUS_OK(ns) (NAND_STATUS_READY | (NAND_STATUS_WP * ((ns)->lines.wp == 0)))
 
 /* Operation failed completion status */
-#define NS_STATUS_FAILED(ns) (NAND_STATUS_FAIL | NS_STATUS_OK(ns)) 
+#define NS_STATUS_FAILED(ns) (NAND_STATUS_FAIL | NS_STATUS_OK(ns))
 
 /* Calculate the page offset in flash RAM image by (row, column) address */
 #define NS_RAW_OFFSET(ns) \
 	(((ns)->regs.row << (ns)->geom.pgshift) + ((ns)->regs.row * (ns)->geom.oobsz) + (ns)->regs.column)
-	
+
 /* Calculate the OOB offset in flash RAM image by (row, column) address */
 #define NS_RAW_OFFSET_OOB(ns) (NS_RAW_OFFSET(ns) + ns->geom.pgsz)
 
 /* After a command is input, the simulator goes to one of the following states */
 #define STATE_CMD_READ0        0x00000001 /* read data from the beginning of page */
 #define STATE_CMD_READ1        0x00000002 /* read data from the second half of page */
-#define STATE_CMD_READSTART      0x00000003 /* read data second command (large page devices) */
+#define STATE_CMD_READSTART    0x00000003 /* read data second command (large page devices) */
 #define STATE_CMD_PAGEPROG     0x00000004 /* start page programm */
 #define STATE_CMD_READOOB      0x00000005 /* read OOB area */
 #define STATE_CMD_ERASE1       0x00000006 /* sector erase first command */
@@ -223,15 +236,15 @@ MODULE_PARM_DESC(dbg,            "Output debug information if not zero");
 
 /* Remove action bits ftom state */
 #define NS_STATE(x) ((x) & ~ACTION_MASK)
-	
-/* 
+
+/*
  * Maximum previous states which need to be saved. Currently saving is
  * only needed for page programm operation with preceeded read command
  * (which is only valid for 512-byte pages).
  */
 #define NS_MAX_PREVSTATES 1
 
-/* 
+/*
  * The structure which describes all the internal simulator data.
  */
 struct nandsim {
@@ -242,7 +255,7 @@ struct nandsim {
 	uint32_t options;       /* chip's characteristic bits */
 	uint32_t state;         /* current chip state */
 	uint32_t nxstate;       /* next expected state */
-	
+
 	uint32_t *op;           /* current operation, NULL operations isn't known yet  */
 	uint32_t pstates[NS_MAX_PREVSTATES]; /* previous states */
 	uint16_t npstates;      /* number of previous states saved */
@@ -406,14 +419,14 @@ init_nandsim(struct mtd_info *mtd)
 		}
 	} else {
 		if (ns->geom.totsz <= (128 << 20)) {
-			ns->geom.pgaddrbytes  = 5;
+			ns->geom.pgaddrbytes  = 4;
 			ns->geom.secaddrbytes = 2;
 		} else {
 			ns->geom.pgaddrbytes  = 5;
 			ns->geom.secaddrbytes = 3;
 		}
 	}
-	
+
 	/* Detect how many ID bytes the NAND chip outputs */
         for (i = 0; nand_flash_ids[i].name != NULL; i++) {
                 if (second_id_byte != nand_flash_ids[i].id)
@@ -444,7 +457,7 @@ init_nandsim(struct mtd_info *mtd)
 #ifdef CONFIG_NS_ABS_POS
 	ns->mem.byte = ioremap(CONFIG_NS_ABS_POS, ns->geom.totszoob);
 	if (!ns->mem.byte) {
-		NS_ERR("init_nandsim: failed to map the NAND flash image at address %p\n", 
+		NS_ERR("init_nandsim: failed to map the NAND flash image at address %p\n",
 			(void *)CONFIG_NS_ABS_POS);
 		return -ENOMEM;
 	}
@@ -567,7 +580,7 @@ static int
 check_command(int cmd)
 {
 	switch (cmd) {
-		
+
 	case NAND_CMD_READ0:
 	case NAND_CMD_READSTART:
 	case NAND_CMD_PAGEPROG:
@@ -580,7 +593,7 @@ check_command(int cmd)
 	case NAND_CMD_RESET:
 	case NAND_CMD_READ1:
 		return 0;
-		
+
 	case NAND_CMD_STATUS_MULTI:
 	default:
 		return 1;
@@ -631,7 +644,7 @@ static inline void
 accept_addr_byte(struct nandsim *ns, u_char bt)
 {
 	uint byte = (uint)bt;
-	
+
 	if (ns->regs.count < (ns->geom.pgaddrbytes - ns->geom.secaddrbytes))
 		ns->regs.column |= (byte << 8 * ns->regs.count);
 	else {
@@ -642,11 +655,11 @@ accept_addr_byte(struct nandsim *ns, u_char bt)
 
 	return;
 }
-		
+
 /*
  * Switch to STATE_READY state.
  */
-static inline void 
+static inline void
 switch_to_ready_state(struct nandsim *ns, u_char status)
 {
 	NS_DBG("switch_to_ready_state: switch to %s state\n", get_state_name(STATE_READY));
@@ -675,7 +688,7 @@ switch_to_ready_state(struct nandsim *ns, u_char status)
  *      (for example program from the second half and read from the
  *      second half operations both begin with the READ1 command). In this
  *      case the ns->pstates[] array contains previous states.
- * 
+ *
  * Thus, the function tries to find operation containing the following
  * states (if the 'flag' parameter is 0):
  *    ns->pstates[0], ... ns->pstates[ns->npstates], ns->state
@@ -683,7 +696,7 @@ switch_to_ready_state(struct nandsim *ns, u_char status)
  * If (one and only one) matching operation is found, it is accepted (
  * ns->ops, ns->state, ns->nxstate are initialized, ns->npstate is
  * zeroed).
- * 
+ *
  * If there are several maches, the current state is pushed to the
  * ns->pstates.
  *
@@ -692,7 +705,7 @@ switch_to_ready_state(struct nandsim *ns, u_char status)
  * In such situation the function is called with 'flag' != 0, and the
  * operation is searched using the following pattern:
  *     ns->pstates[0], ... ns->pstates[ns->npstates], <address input>
- * 
+ *
  * It is supposed that this pattern must either match one operation on
  * none. There can't be ambiguity in that case.
  *
@@ -711,15 +724,15 @@ find_operation(struct nandsim *ns, uint32_t flag)
 {
 	int opsfound = 0;
 	int i, j, idx = 0;
-	
+
 	for (i = 0; i < NS_OPER_NUM; i++) {
 
 		int found = 1;
-	
+
 		if (!(ns->options & ops[i].reqopts))
 			/* Ignore operations we can't perform */
 			continue;
-			
+
 		if (flag) {
 			if (!(ops[i].states[ns->npstates] & STATE_ADDR_MASK))
 				continue;
@@ -728,7 +741,7 @@ find_operation(struct nandsim *ns, uint32_t flag)
 				continue;
 		}
 
-		for (j = 0; j < ns->npstates; j++) 
+		for (j = 0; j < ns->npstates; j++)
 			if (NS_STATE(ops[i].states[j]) != NS_STATE(ns->pstates[j])
 				&& (ns->options & ops[idx].reqopts)) {
 				found = 0;
@@ -745,7 +758,7 @@ find_operation(struct nandsim *ns, uint32_t flag)
 		/* Exact match */
 		ns->op = &ops[idx].states[0];
 		if (flag) {
-			/* 
+			/*
 			 * In this case the find_operation function was
 			 * called when address has just began input. But it isn't
 			 * yet fully input and the current state must
@@ -763,7 +776,7 @@ find_operation(struct nandsim *ns, uint32_t flag)
 				idx, get_state_name(ns->state), get_state_name(ns->nxstate));
 		return 0;
 	}
-	
+
 	if (opsfound == 0) {
 		/* Nothing was found. Try to ignore previous commands (if any) and search again */
 		if (ns->npstates != 0) {
@@ -777,13 +790,13 @@ find_operation(struct nandsim *ns, uint32_t flag)
 		switch_to_ready_state(ns, NS_STATUS_FAILED(ns));
 		return -2;
 	}
-	
+
 	if (flag) {
 		/* This shouldn't happen */
 		NS_DBG("find_operation: BUG, operation must be known if address is input\n");
 		return -2;
 	}
-	
+
 	NS_DBG("find_operation: there is still ambiguity\n");
 
 	ns->pstates[ns->npstates++] = ns->state;
@@ -803,7 +816,7 @@ do_state_action(struct nandsim *ns, uint32_t action)
 	int busdiv = ns->busw == 8 ? 1 : 2;
 
 	action &= ACTION_MASK;
-	
+
 	/* Check that page address input is correct */
 	if (action != ACTION_SECERASE && ns->regs.row >= ns->geom.pgnum) {
 		NS_WARN("do_state_action: wrong page number (%#x)\n", ns->regs.row);
@@ -827,14 +840,14 @@ do_state_action(struct nandsim *ns, uint32_t action)
 
 		NS_DBG("do_state_action: (ACTION_CPY:) copy %d bytes to int buf, raw offset %d\n",
 			num, NS_RAW_OFFSET(ns) + ns->regs.off);
-		
+
 		if (ns->regs.off == 0)
 			NS_LOG("read page %d\n", ns->regs.row);
 		else if (ns->regs.off < ns->geom.pgsz)
 			NS_LOG("read page %d (second half)\n", ns->regs.row);
 		else
 			NS_LOG("read OOB of page %d\n", ns->regs.row);
-		
+
 		NS_UDELAY(access_delay);
 		NS_UDELAY(input_cycle * ns->geom.pgsz / 1000 / busdiv);
 
@@ -844,30 +857,30 @@ do_state_action(struct nandsim *ns, uint32_t action)
 		/*
 		 * Erase sector.
 		 */
-		
+
 		if (ns->lines.wp) {
 			NS_ERR("do_state_action: device is write-protected, ignore sector erase\n");
 			return -1;
 		}
-		
+
 		if (ns->regs.row >= ns->geom.pgnum - ns->geom.pgsec
 			|| (ns->regs.row & ~(ns->geom.secsz - 1))) {
 			NS_ERR("do_state_action: wrong sector address (%#x)\n", ns->regs.row);
 			return -1;
 		}
-		
+
 		ns->regs.row = (ns->regs.row <<
 				8 * (ns->geom.pgaddrbytes - ns->geom.secaddrbytes)) | ns->regs.column;
 		ns->regs.column = 0;
-		
+
 		NS_DBG("do_state_action: erase sector at address %#x, off = %d\n",
 				ns->regs.row, NS_RAW_OFFSET(ns));
 		NS_LOG("erase sector %d\n", ns->regs.row >> (ns->geom.secshift - ns->geom.pgshift));
 
 		memset(ns->mem.byte + NS_RAW_OFFSET(ns), 0xFF, ns->geom.secszoob);
-		
+
 		NS_MDELAY(erase_delay);
-		
+
 		break;
 
 	case ACTION_PRGPAGE:
@@ -893,12 +906,12 @@ do_state_action(struct nandsim *ns, uint32_t action)
 		NS_DBG("do_state_action: copy %d bytes from int buf to (%#x, %#x), raw off = %d\n",
 			num, ns->regs.row, ns->regs.column, NS_RAW_OFFSET(ns) + ns->regs.off);
 		NS_LOG("programm page %d\n", ns->regs.row);
-		
+
 		NS_UDELAY(programm_delay);
 		NS_UDELAY(output_cycle * ns->geom.pgsz / 1000 / busdiv);
-		
+
 		break;
-	
+
 	case ACTION_ZEROOFF:
 		NS_DBG("do_state_action: set internal offset to 0\n");
 		ns->regs.off = 0;
@@ -918,7 +931,7 @@ do_state_action(struct nandsim *ns, uint32_t action)
 		NS_DBG("do_state_action: set internal offset to %d\n", ns->geom.pgsz);
 		ns->regs.off = ns->geom.pgsz;
 		break;
-		
+
 	default:
 		NS_DBG("do_state_action: BUG! unknown action\n");
 	}
@@ -937,7 +950,7 @@ switch_state(struct nandsim *ns)
 		 * The current operation have already been identified.
 		 * Just follow the states chain.
 		 */
-		
+
 		ns->stateidx += 1;
 		ns->state = ns->nxstate;
 		ns->nxstate = ns->op[ns->stateidx + 1];
@@ -951,14 +964,14 @@ switch_state(struct nandsim *ns)
 			switch_to_ready_state(ns, NS_STATUS_FAILED(ns));
 			return;
 		}
-		
+
 	} else {
 		/*
 		 * We don't yet know which operation we perform.
 		 * Try to identify it.
 		 */
 
-		/*  
+		/*
 		 *  The only event causing the switch_state function to
 		 *  be called with yet unknown operation is new command.
 		 */
@@ -987,7 +1000,7 @@ switch_state(struct nandsim *ns)
 		 */
 
 		u_char status = NS_STATUS_OK(ns);
-		
+
 		/* In case of data states, see if all bytes were input/output */
 		if ((ns->state & (STATE_DATAIN_MASK | STATE_DATAOUT_MASK))
 			&& ns->regs.count != ns->regs.num) {
@@ -995,17 +1008,17 @@ switch_state(struct nandsim *ns)
 					ns->regs.num - ns->regs.count);
 			status = NS_STATUS_FAILED(ns);
 		}
-				
+
 		NS_DBG("switch_state: operation complete, switch to STATE_READY state\n");
 
 		switch_to_ready_state(ns, status);
 
 		return;
 	} else if (ns->nxstate & (STATE_DATAIN_MASK | STATE_DATAOUT_MASK)) {
-		/* 
+		/*
 		 * If the next state is data input/output, switch to it now
 		 */
-		
+
 		ns->state      = ns->nxstate;
 		ns->nxstate    = ns->op[++ns->stateidx + 1];
 		ns->regs.num   = ns->regs.count = 0;
@@ -1023,16 +1036,16 @@ switch_state(struct nandsim *ns)
 			case STATE_DATAOUT:
 				ns->regs.num = ns->geom.pgszoob - ns->regs.off - ns->regs.column;
 				break;
-				
+
 			case STATE_DATAOUT_ID:
 				ns->regs.num = ns->geom.idbytes;
 				break;
-				
+
 			case STATE_DATAOUT_STATUS:
 			case STATE_DATAOUT_STATUS_M:
 				ns->regs.count = ns->regs.num = 0;
 				break;
-				
+
 			default:
 				NS_ERR("switch_state: BUG! unknown data state\n");
 		}
@@ -1044,16 +1057,16 @@ switch_state(struct nandsim *ns)
 		 */
 
 		ns->regs.count = 0;
-		
+
 		switch (NS_STATE(ns->nxstate)) {
 			case STATE_ADDR_PAGE:
 				ns->regs.num = ns->geom.pgaddrbytes;
-		
+
 				break;
 			case STATE_ADDR_SEC:
 				ns->regs.num = ns->geom.secaddrbytes;
 				break;
-	
+
 			case STATE_ADDR_ZERO:
 				ns->regs.num = 1;
 				break;
@@ -1062,7 +1075,7 @@ switch_state(struct nandsim *ns)
 				NS_ERR("switch_state: BUG! unknown address state\n");
 		}
 	} else {
-		/* 
+		/*
 		 * Just reset internal counters.
 		 */
 
@@ -1184,7 +1197,7 @@ ns_nand_read_byte(struct mtd_info *mtd)
 		default:
 			BUG();
 	}
-	
+
 	if (ns->regs.count == ns->regs.num) {
 		NS_DBG("read_byte: all bytes were read\n");
 
@@ -1201,9 +1214,9 @@ ns_nand_read_byte(struct mtd_info *mtd)
 		}
 		else if (NS_STATE(ns->nxstate) == STATE_READY)
 			switch_state(ns);
-		
+
 	}
-	
+
 	return outb;
 }
 
@@ -1211,7 +1224,7 @@ static void
 ns_nand_write_byte(struct mtd_info *mtd, u_char byte)
 {
         struct nandsim *ns = (struct nandsim *)((struct nand_chip *)mtd->priv)->priv;
-	
+
 	/* Sanity and correctness checks */
 	if (!ns->lines.ce) {
 		NS_ERR("write_byte: chip is disabled, ignore write\n");
@@ -1221,7 +1234,7 @@ ns_nand_write_byte(struct mtd_info *mtd, u_char byte)
 		NS_ERR("write_byte: ALE and CLE pins are high simultaneously, ignore write\n");
 		return;
 	}
-			
+
 	if (ns->lines.cle == 1) {
 		/*
 		 * The byte written is a command.
@@ -1233,7 +1246,7 @@ ns_nand_write_byte(struct mtd_info *mtd, u_char byte)
 			return;
 		}
 
-		/* 
+		/*
 		 * Chip might still be in STATE_DATAOUT
 		 * (if OPT_AUTOINCR feature is supported), STATE_DATAOUT_STATUS or
 		 * STATE_DATAOUT_STATUS_M state. If so, switch state.
@@ -1254,13 +1267,13 @@ ns_nand_write_byte(struct mtd_info *mtd, u_char byte)
 				"ignore previous states\n", (uint)byte, get_state_name(ns->nxstate));
 			switch_to_ready_state(ns, NS_STATUS_FAILED(ns));
 		}
-		
+
 		/* Check that the command byte is correct */
 		if (check_command(byte)) {
 			NS_ERR("write_byte: unknown command %#x\n", (uint)byte);
 			return;
 		}
-		
+
 		NS_DBG("command byte corresponding to %s state accepted\n",
 			get_state_name(get_state_by_command(byte)));
 		ns->regs.command = byte;
@@ -1277,12 +1290,12 @@ ns_nand_write_byte(struct mtd_info *mtd, u_char byte)
 
 			if (find_operation(ns, 1) < 0)
 				return;
-			
+
 			if ((ns->state & ACTION_MASK) && do_state_action(ns, ns->state) < 0) {
 				switch_to_ready_state(ns, NS_STATUS_FAILED(ns));
 				return;
 			}
-				
+
 			ns->regs.count = 0;
 			switch (NS_STATE(ns->nxstate)) {
 				case STATE_ADDR_PAGE:
@@ -1306,7 +1319,7 @@ ns_nand_write_byte(struct mtd_info *mtd, u_char byte)
 			switch_to_ready_state(ns, NS_STATUS_FAILED(ns));
 			return;
 		}
-		
+
 		/* Check if this is expected byte */
 		if (ns->regs.count == ns->regs.num) {
 			NS_ERR("write_byte: no more address bytes expected\n");
@@ -1325,12 +1338,12 @@ ns_nand_write_byte(struct mtd_info *mtd, u_char byte)
 			NS_DBG("address (%#x, %#x) is accepted\n", ns->regs.row, ns->regs.column);
 			switch_state(ns);
 		}
-		
+
 	} else {
 		/*
 		 * The byte written is an input data.
 		 */
-		
+
 		/* Check that chip is expecting data input */
 		if (!(ns->state & STATE_DATAIN_MASK)) {
 			NS_ERR("write_byte: data input (%#x) isn't expected, state is %s, "
@@ -1372,7 +1385,7 @@ ns_nand_read_word(struct mtd_info *mtd)
 	struct nand_chip *chip = (struct nand_chip *)mtd->priv;
 
 	NS_DBG("read_word\n");
-	
+
 	return chip->read_byte(mtd) | (chip->read_byte(mtd) << 8);
 }
 
@@ -1380,14 +1393,14 @@ static void
 ns_nand_write_word(struct mtd_info *mtd, uint16_t word)
 {
 	struct nand_chip *chip = (struct nand_chip *)mtd->priv;
-	
+
 	NS_DBG("write_word\n");
-	
+
 	chip->write_byte(mtd, word & 0xFF);
 	chip->write_byte(mtd, word >> 8);
 }
 
-static void 
+static void
 ns_nand_write_buf(struct mtd_info *mtd, const u_char *buf, int len)
 {
         struct nandsim *ns = (struct nandsim *)((struct nand_chip *)mtd->priv)->priv;
@@ -1409,13 +1422,13 @@ ns_nand_write_buf(struct mtd_info *mtd, const u_char *buf, int len)
 
 	memcpy(ns->buf.byte + ns->regs.count, buf, len);
 	ns->regs.count += len;
-	
+
 	if (ns->regs.count == ns->regs.num) {
 		NS_DBG("write_buf: %d bytes were written\n", ns->regs.count);
 	}
 }
 
-static void 
+static void
 ns_nand_read_buf(struct mtd_info *mtd, u_char *buf, int len)
 {
         struct nandsim *ns = (struct nandsim *)((struct nand_chip *)mtd->priv)->priv;
@@ -1453,7 +1466,7 @@ ns_nand_read_buf(struct mtd_info *mtd, u_char *buf, int len)
 
 	memcpy(buf, ns->buf.byte + ns->regs.count, len);
 	ns->regs.count += len;
-	
+
 	if (ns->regs.count == ns->regs.num) {
 		if ((ns->options & OPT_AUTOINCR) && NS_STATE(ns->state) == STATE_DATAOUT) {
 			ns->regs.count = 0;
@@ -1465,11 +1478,11 @@ ns_nand_read_buf(struct mtd_info *mtd, u_char *buf, int len)
 		else if (NS_STATE(ns->nxstate) == STATE_READY)
 			switch_state(ns);
 	}
-	
+
 	return;
 }
 
-static int 
+static int
 ns_nand_verify_buf(struct mtd_info *mtd, const u_char *buf, int len)
 {
 	ns_nand_read_buf(mtd, (u_char *)&ns_verify_buf[0], len);
@@ -1484,36 +1497,9 @@ ns_nand_verify_buf(struct mtd_info *mtd, const u_char *buf, int len)
 }
 
 /*
- * Having only NAND chip IDs we call nand_scan which detects NAND flash
- * parameters and then calls scan_bbt in order to scan/find/build the
- * NAND flash bad block table. But since at that moment the NAND flash
- * image isn't allocated in the simulator, errors arise. To avoid this
- * we redefine the scan_bbt callback and initialize the nandsim structure
- * before the flash media scanning.
- */
-int ns_scan_bbt(struct mtd_info *mtd)
-{ 
-	struct nand_chip *chip = (struct nand_chip *)mtd->priv;
-	struct nandsim   *ns   = (struct nandsim *)(chip->priv);
-	int retval;
-
-	if (!NS_IS_INITIALIZED(ns))
-		if ((retval = init_nandsim(mtd)) != 0) {
-			NS_ERR("scan_bbt: can't initialize the nandsim structure\n");
-			return retval;
-		}
-	if ((retval = nand_default_bbt(mtd)) != 0) {
-		free_nandsim(ns);
-		return retval;
-	}
-
-	return 0;
-}
-
-/*
  * Module initialization function
  */
-int __init ns_init_module(void)
+static int __init ns_init_module(void)
 {
 	struct nand_chip *chip;
 	struct nandsim *nand;
@@ -1523,7 +1509,7 @@ int __init ns_init_module(void)
 		NS_ERR("wrong bus width (%d), use only 8 or 16\n", bus_width);
 		return -EINVAL;
 	}
-	
+
 	/* Allocate and initialize mtd_info, nand_chip and nandsim structures */
 	nsmtd = kmalloc(sizeof(struct mtd_info) + sizeof(struct nand_chip)
 				+ sizeof(struct nandsim), GFP_KERNEL);
@@ -1536,7 +1522,7 @@ int __init ns_init_module(void)
 	chip        = (struct nand_chip *)(nsmtd + 1);
         nsmtd->priv = (void *)chip;
 	nand        = (struct nandsim *)(chip + 1);
-	chip->priv  = (void *)nand;	
+	chip->priv  = (void *)nand;
 
 	/*
 	 * Register simulator's callbacks.
@@ -1544,7 +1530,6 @@ int __init ns_init_module(void)
 	chip->hwcontrol  = ns_hwcontrol;
 	chip->read_byte  = ns_nand_read_byte;
 	chip->dev_ready  = ns_device_ready;
-	chip->scan_bbt   = ns_scan_bbt;
 	chip->write_byte = ns_nand_write_byte;
 	chip->write_buf  = ns_nand_write_buf;
 	chip->read_buf   = ns_nand_read_buf;
@@ -1552,10 +1537,11 @@ int __init ns_init_module(void)
 	chip->write_word = ns_nand_write_word;
 	chip->read_word  = ns_nand_read_word;
 	chip->eccmode    = NAND_ECC_SOFT;
+	chip->options   |= NAND_SKIP_BBTSCAN;
 
-	/* 
+	/*
 	 * Perform minimum nandsim structure initialization to handle
-	 * the initial ID read command correctly 
+	 * the initial ID read command correctly
 	 */
 	if (third_id_byte != 0xFF || fourth_id_byte != 0xFF)
 		nand->geom.idbytes = 4;
@@ -1577,6 +1563,16 @@ int __init ns_init_module(void)
 		NS_ERR("can't register NAND Simulator\n");
 		if (retval > 0)
 			retval = -ENXIO;
+		goto error;
+	}
+
+	if ((retval = init_nandsim(nsmtd)) != 0) {
+		NS_ERR("scan_bbt: can't initialize the nandsim structure\n");
+		goto error;
+	}
+
+	if ((retval = nand_default_bbt(nsmtd)) != 0) {
+		free_nandsim(nand);
 		goto error;
 	}
 

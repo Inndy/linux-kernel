@@ -34,9 +34,6 @@
 #include <asm/rtc.h>
 #include <asm/freq.h>
 #include <asm/cpu/timer.h>
-#ifdef CONFIG_SH_KGDB
-#include <asm/kgdb.h>
-#endif
 
 #include <linux/timex.h>
 #include <linux/irq.h>
@@ -646,12 +643,4 @@ void __init time_init(void)
 	ctrl_outl(interval, TMU0_TCOR);
 	ctrl_outl(interval, TMU0_TCNT);
 	ctrl_outb(TMU_TSTR_INIT, TMU_TSTR);
-
-#if defined(CONFIG_SH_KGDB)
-	/*
-	 * Set up kgdb as requested. We do it here because the serial
-	 * init uses the timer vars we just set up for figuring baud.
-	 */
-	kgdb_init();
-#endif
 }

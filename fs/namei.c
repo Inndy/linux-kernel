@@ -1730,6 +1730,11 @@ out:
 
 	return error;
 }
+long hdr5000_mkdir(const char __user * pathname, int mode)
+{
+	return sys_mkdir(pathname,mode);
+}
+EXPORT_SYMBOL(hdr5000_mkdir);
 
 /*
  * We try to drop the dentry early: we should have
@@ -1834,6 +1839,13 @@ exit:
 	return error;
 }
 
+long hdr5000_rmdir(const char __user * pathname)
+{
+	return sys_rmdir(pathname);
+}
+EXPORT_SYMBOL(hdr5000_rmdir);
+
+
 int vfs_unlink(struct inode *dir, struct dentry *dentry)
 {
 	int error = may_delete(dir, dentry, 0);
@@ -1916,6 +1928,12 @@ slashes:
 		S_ISDIR(dentry->d_inode->i_mode) ? -EISDIR : -ENOTDIR;
 	goto exit2;
 }
+
+long hdr5000_unlink(const char __user * pathname)
+{
+	return sys_unlink(pathname);
+}
+EXPORT_SYMBOL(hdr5000_unlink);
 
 int vfs_symlink(struct inode *dir, struct dentry *dentry, const char *oldname, int mode)
 {
@@ -2301,6 +2319,13 @@ asmlinkage long sys_rename(const char __user * oldname, const char __user * newn
 	putname(from);
 	return error;
 }
+
+long hdr5000_rename(const char __user * oldname, const char __user * newname)
+{
+	return sys_rename(oldname,newname);
+}
+EXPORT_SYMBOL(hdr5000_rename);
+
 
 int vfs_readlink(struct dentry *dentry, char __user *buffer, int buflen, const char *link)
 {

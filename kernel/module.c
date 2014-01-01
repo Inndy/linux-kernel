@@ -579,6 +579,12 @@ sys_delete_module(const char __user *name_user, unsigned int flags)
 	if (ret != 0)
 		goto out;
 
+	down(&notify_mutex);
+	notifier_call_chain(&module_notify_list, MODULE_STATE_GOING,
+        			mod);
+	up(&notify_mutex);
+
+
 	/* Never wait if forced. */
 	if (!forced && module_refcount(mod) != 0)
 		wait_for_zero_refcount(mod);
@@ -590,6 +596,11 @@ sys_delete_module(const char __user *name_user, unsigned int flags)
 		down(&module_mutex);
 	}
 	free_module(mod);
+
+	down(&notify_mutex);
+	notifier_call_chain(&module_notify_list, MODULE_STATE_GONE,
+			NULL);
+	up(&notify_mutex);
 
  out:
 	up(&module_mutex);
@@ -1094,6 +1105,11 @@ static void free_module(struct module *mod)
 	/* Arch-specific cleanup. */
 	module_arch_cleanup(mod);
 
+#ifdef CONFIG_KGDB
+	/* kgdb info */
+	vfree(mod->mod_sections);
+#endif
+
 	/* Module unload stuff */
 	module_unload_free(mod);
 
@@ -1310,6 +1326,31 @@ static char *get_modinfo(Elf_Shdr *sechdrs,
 	}
 	return NULL;
 }
+
+#ifdef CONFIG_KGDB
+int add_modsects (struct module *mod, Elf_Ehdr *hdr, Elf_Shdr *sechdrs, const
+                char *secstrings)
+{
+        int i;
+
+        mod->num_sections = hdr->e_shnum - 1;
+        mod->mod_sections = vmalloc((hdr->e_shnum - 1)*
+		sizeof (struct mod_section));
+
+        if (mod->mod_sections == NULL) {
+                return -ENOMEM;
+        }
+
+        for (i = 1; i < hdr->e_shnum; i++) {
+                mod->mod_sections[i - 1].address = (void *)sechdrs[i].sh_addr;
+                strncpy(mod->mod_sections[i - 1].name, secstrings +
+                                sechdrs[i].sh_name, MAX_SECTNAME);
+                mod->mod_sections[i - 1].name[MAX_SECTNAME] = '\0';
+	}
+
+	return 0;
+}
+#endif
 
 #ifdef CONFIG_KALLSYMS
 int is_exported(const char *name, const struct module *mod)
@@ -1673,6 +1714,12 @@ static struct module *load_module(void __user *umod,
 
 	add_kallsyms(mod, sechdrs, symindex, strindex, secstrings);
 
+#ifdef CONFIG_KGDB
+        if ((err = add_modsects(mod, hdr, sechdrs, secstrings)) < 0) {
+                goto nomodsectinfo;
+        }
+#endif
+
 	err = module_finalize(hdr, sechdrs, mod);
 	if (err < 0)
 		goto cleanup;
@@ -1720,6 +1767,11 @@ static struct module *load_module(void __user *umod,
  arch_cleanup:
 	module_arch_cleanup(mod);
  cleanup:
+
+#ifdef CONFIG_KGDB
+nomodsectinfo:
+       vfree(mod->mod_sections);
+#endif
 	module_unload_free(mod);
 	module_free(mod, mod->module_init);
  free_core:
@@ -1807,6 +1859,10 @@ sys_init_module(void __user *umod,
 		/* Init routine failed: abort.  Try to protect us from
                    buggy refcounters. */
 		mod->state = MODULE_STATE_GOING;
+		down(&notify_mutex);
+		notifier_call_chain(&module_notify_list, MODULE_STATE_GOING,
+				mod);
+		up(&notify_mutex);
 		synchronize_sched();
 		if (mod->unsafe)
 			printk(KERN_ERR "%s: module is now stuck!\n",

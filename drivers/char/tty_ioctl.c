@@ -99,7 +99,7 @@ static void change_termios(struct tty_struct * tty, struct termios * new_termios
 	int canon_change;
 	struct termios old_termios = *tty->termios;
 	struct tty_ldisc *ld;
-	
+
 	/*
 	 *	Perform the actual termios internal changes under lock.
 	 */
@@ -118,7 +118,6 @@ static void change_termios(struct tty_struct * tty, struct termios * new_termios
 		tty->canon_data = 0;
 		tty->erasing = 0;
 	}
-	
 	
 	if (canon_change && !L_ICANON(tty) && tty->read_cnt)
 		/* Get characters left over from canonical mode. */
@@ -142,7 +141,7 @@ static void change_termios(struct tty_struct * tty, struct termios * new_termios
 			wake_up_interruptible(&tty->link->read_wait);
 		}
 	}
-	   
+
 	if (tty->driver->set_termios)
 		(*tty->driver->set_termios)(tty, &old_termios);
 
@@ -176,7 +175,7 @@ static int set_termios(struct tty_struct * tty, void __user *arg, int opt)
 	}
 
 	ld = tty_ldisc_ref(tty);
-	
+
 	if (ld != NULL) {
 		if ((opt & TERMIOS_FLUSH) && ld->flush_buffer)
 			ld->flush_buffer(tty);
@@ -476,11 +475,11 @@ int n_tty_ioctl(struct tty_struct * tty, struct file * file,
 			ld = tty_ldisc_ref(tty);
 			switch (arg) {
 			case TCIFLUSH:
-				if (ld->flush_buffer)
+				if (ld && ld->flush_buffer)
 					ld->flush_buffer(tty);
 				break;
 			case TCIOFLUSH:
-				if (ld->flush_buffer)
+				if (ld && ld->flush_buffer)
 					ld->flush_buffer(tty);
 				/* fall through */
 			case TCOFLUSH:

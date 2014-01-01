@@ -10,7 +10,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  *
- * $Id: jffs_fm.h,v 1.13 2001/01/11 12:03:25 dwmw2 Exp $
+ * $Id: jffs_fm.h,v 1.14 2001/12/10 17:37:12 asanochkin Exp $
  *
  * Ported to Linux 2.3.x and MTD:
  * Copyright (C) 2000  Alexander Larsson (alex@cendio.se), Cendio Systems AB
@@ -62,6 +62,10 @@
 #define JFFS_GET_PAD_BYTES(size) ( (JFFS_ALIGN_SIZE-1) & -(__u32)(size) )
 #define JFFS_PAD(size) ( (size + (JFFS_ALIGN_SIZE-1)) & ~(JFFS_ALIGN_SIZE-1) )
 
+
+
+void jffs_free_fm(struct jffs_fm *n);
+struct jffs_fm *jffs_alloc_fm(void);
 
 
 struct jffs_node_ref
@@ -118,8 +122,8 @@ struct jffs_fmcontrol
 
 
 
-struct jffs_fmcontrol *jffs_build_begin(struct jffs_control *c, int unit);
-void jffs_build_end(struct jffs_fmcontrol *fmc);
+struct jffs_fmcontrol *jffs_build_begin(struct jffs_control *c, kdev_t dev);
+int jffs_build_end(struct jffs_fmcontrol *fmc, __u32 head_offset);
 void jffs_cleanup_fmcontrol(struct jffs_fmcontrol *fmc);
 
 int jffs_fmalloc(struct jffs_fmcontrol *fmc, __u32 size,
@@ -141,8 +145,6 @@ void jffs_fmfree_partly(struct jffs_fmcontrol *fmc, struct jffs_fm *fm,
 
 void jffs_print_fmcontrol(struct jffs_fmcontrol *fmc);
 void jffs_print_fm(struct jffs_fm *fm);
-#if 0
 void jffs_print_node_ref(struct jffs_node_ref *ref);
-#endif  /*  0  */
 
 #endif /* __LINUX_JFFS_FM_H__  */

@@ -1,5 +1,5 @@
 # drivers/mtd/chips/Kconfig
-# $Id: Kconfig,v 1.13 2004/12/01 15:49:10 nico Exp $
+# $Id: Kconfig,v 1.19 2005/12/06 17:24:17 gleixner Exp $
 
 menu "RAM/ROM/Flash chip drivers"
 	depends on MTD!=n
@@ -39,7 +39,7 @@ config MTD_CFI_ADV_OPTIONS
 	  If you need to specify a specific endianness for access to flash
 	  chips, or if you wish to reduce the size of the kernel by including
 	  support for only specific arrangements of flash chips, say 'Y'. This
-	  option does not directly affect the code, but will enable other 
+	  option does not directly affect the code, but will enable other
 	  configuration options which allow you to do so.
 
 	  If unsure, say 'N'.
@@ -56,7 +56,7 @@ config MTD_CFI_NOSWAP
 	  data bits when writing the 'magic' commands to the chips. Saying
 	  'NO', which is the default when CONFIG_MTD_CFI_ADV_OPTIONS isn't
 	  enabled, means that the CPU will not do any swapping; the chips
-	  are expected to be wired to the CPU in 'host-endian' form. 
+	  are expected to be wired to the CPU in 'host-endian' form.
 	  Specific arrangements are possible with the BIG_ENDIAN_BYTE and
 	  LITTLE_ENDIAN_BYTE, if the bytes are reversed.
 
@@ -79,10 +79,10 @@ config MTD_CFI_GEOMETRY
 	bool "Specific CFI Flash geometry selection"
 	depends on MTD_CFI_ADV_OPTIONS
 	help
-	  This option does not affect the code directly, but will enable 
+	  This option does not affect the code directly, but will enable
 	  some other configuration options which would allow you to reduce
-	  the size of the kernel by including support for only certain 
-	  arrangements of CFI chips. If unsure, say 'N' and all options 
+	  the size of the kernel by including support for only certain
+	  arrangements of CFI chips. If unsure, say 'N' and all options
 	  which are supported by the current code will be enabled.
 
 config MTD_MAP_BANK_WIDTH_1
@@ -155,6 +155,31 @@ config MTD_CFI_I8
 	  If your flash chips are interleaved in eights - i.e. you have eight
 	  flash chips addressed by each bus cycle, then say 'Y'.
 
+config MTD_OTP
+	bool "Protection Registers aka one-time programmable (OTP) bits"
+	depends on MTD_CFI_ADV_OPTIONS
+	default n
+	help
+	  This enables support for reading, writing and locking so called
+	  "Protection Registers" present on some flash chips.
+	  A subset of them are pre-programmed at the factory with a
+	  unique set of values. The rest is user-programmable.
+
+	  The user-programmable Protection Registers contain one-time
+	  programmable (OTP) bits; when programmed, register bits cannot be
+	  erased. Each Protection Register can be accessed multiple times to
+	  program individual bits, as long as the register remains unlocked.
+
+	  Each Protection Register has an associated Lock Register bit. When a
+	  Lock Register bit is programmed, the associated Protection Register
+	  can only be read; it can no longer be programmed. Additionally,
+	  because the Lock Register bits themselves are OTP, when programmed,
+	  Lock Register bits cannot be erased. Therefore, when a Protection
+	  Register is locked, it cannot be unlocked.
+
+	  This feature should therefore be used with extreme care. Any mistake
+	  in the programming of OTP bits will waste them.
+
 config MTD_CFI_INTELEXT
 	tristate "Support for Intel/Sharp flash chips"
 	depends on MTD_GEN_PROBE
@@ -172,29 +197,8 @@ config MTD_CFI_AMDSTD
 	help
 	  The Common Flash Interface defines a number of different command
 	  sets which a CFI-compliant chip may claim to implement. This code
-	  provides support for one of those command sets, used on chips 
+	  provides support for one of those command sets, used on chips
 	  including the AMD Am29LV320.
-
-config MTD_CFI_AMDSTD_RETRY
-	int "Retry failed commands (erase/program)"
-	depends on MTD_CFI_AMDSTD
-	default "0"
-	help
-	  Some chips, when attached to a shared bus, don't properly filter
-	  bus traffic that is destined to other devices.  This broken
-	  behavior causes erase and program sequences to be aborted when
-	  the sequences are mixed with traffic for other devices.
-
-	  SST49LF040 (and related) chips are know to be broken.
-
-config MTD_CFI_AMDSTD_RETRY_MAX
-	int "Max retries of failed commands (erase/program)"
-	depends on MTD_CFI_AMDSTD_RETRY
-	default "0"
-	help
-	  If you have an SST49LF040 (or related chip) then this value should
-	  be set to at least 1.  This can also be adjusted at driver load
-	  time with the retry_cmd_max module parameter.
 
 config MTD_CFI_STAA
 	tristate "Support for ST (Advanced Architecture) flash chips"
@@ -212,14 +216,14 @@ config MTD_RAM
 	tristate "Support for RAM chips in bus mapping"
 	depends on MTD
 	help
-	  This option enables basic support for RAM chips accessed through 
+	  This option enables basic support for RAM chips accessed through
 	  a bus mapping driver.
 
 config MTD_ROM
 	tristate "Support for ROM chips in bus mapping"
 	depends on MTD
 	help
-	  This option enables basic support for ROM chips accessed through 
+	  This option enables basic support for ROM chips accessed through
 	  a bus mapping driver.
 
 config MTD_ABSENT
@@ -250,7 +254,7 @@ config MTD_AMDSTD
 	depends on MTD && MTD_OBSOLETE_CHIPS
 	help
 	  This option enables support for flash chips using AMD-compatible
-	  commands, including some which are not CFI-compatible and hence 
+	  commands, including some which are not CFI-compatible and hence
 	  cannot be used with the CONFIG_MTD_CFI_AMDSTD option.
 
 	  It also works on AMD compatible chips that do conform to CFI.
@@ -260,7 +264,7 @@ config MTD_SHARP
 	depends on MTD && MTD_OBSOLETE_CHIPS
 	help
 	  This option enables support for flash chips using Sharp-compatible
-	  commands, including some which are not CFI-compatible and hence 
+	  commands, including some which are not CFI-compatible and hence
 	  cannot be used with the CONFIG_MTD_CFI_INTELxxx options.
 
 config MTD_JEDEC
@@ -275,7 +279,7 @@ config MTD_JEDEC
 
 config MTD_XIP
 	bool "XIP aware MTD support"
-	depends on !SMP && MTD_CFI_INTELEXT && EXPERIMENTAL
+	depends on !SMP && (MTD_CFI_INTELEXT || MTD_CFI_AMDSTD) && EXPERIMENTAL && ARM
 	default y if XIP_KERNEL
 	help
 	  This allows MTD support to work with flash memory which is also

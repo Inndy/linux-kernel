@@ -33,6 +33,7 @@
 #include <linux/unistd.h>
 #include <linux/serial.h>
 #include <linux/serial_8250.h>
+#include <linux/kgdb.h>
 #include <asm/io.h>
 #include <asm/prom.h>
 #include <asm/processor.h>
@@ -1236,6 +1237,7 @@ void __init generic_find_legacy_serial_ports(u64 *physport,
 		serial_ports[index].iobase = reg->address;
 		serial_ports[index].irq = interrupts ? interrupts[0] : 0;
 		serial_ports[index].flags = ASYNC_BOOT_AUTOCONF;
+		serial_ports[index].line = index;
 
 		DBG("Added legacy port, index: %d, port: %x, irq: %d, clk: %d\n",
 		    index,
@@ -1288,6 +1290,18 @@ void __init generic_find_legacy_serial_ports(u64 *physport,
 
 	DBG(" <- generic_find_legacy_serial_port()\n");
 }
+
+
+#ifdef CONFIG_KGDB_8250
+void add_kgdb_port(void)
+{
+	int ttyS;
+
+	ttyS = kgdb8250_get_ttyS();
+	if (ttyS < old_serial_count)
+		kgdb8250_add_platform_port(ttyS, &serial_ports[ttyS]);
+}
+#endif
 
 static struct platform_device serial_device = {
 	.name	= "serial8250",

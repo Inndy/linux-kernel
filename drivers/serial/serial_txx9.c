@@ -31,6 +31,7 @@
  *	1.01	Set fifosize to make tx_empry called properly.
  *		Use standard uart_get_divisor.
  *	1.02	Cleanup. (import 8250.c changes)
+ *	1.03	Fix low-latency mode. (import 8250.c changes)
  */
 #include <linux/config.h>
 
@@ -54,7 +55,7 @@
 #include <asm/io.h>
 #include <asm/irq.h>
 
-static char *serial_version = "1.02";
+static char *serial_version = "1.03";
 static char *serial_name = "TX39/49 Serial driver";
 
 #define PASS_LIMIT	256
@@ -304,8 +305,11 @@ receive_chars(struct uart_txx9_port *up, unsigned int *status, struct pt_regs *r
 		/* The following is not allowed by the tty layer and
 		   unsafe. It should be fixed ASAP */
 		if (unlikely(tty->flip.count >= TTY_FLIPBUF_SIZE)) {
-			if(tty->low_latency)
+			if (tty->low_latency) {
+				spin_unlock(&up->port.lock);
 				tty_flip_buffer_push(tty);
+				spin_lock(&up->port.lock);
+			}
 			/* If this failed then we will throw away the
 			   bytes but must do so to clear interrupts */
 		}
@@ -356,7 +360,9 @@ receive_chars(struct uart_txx9_port *up, unsigned int *status, struct pt_regs *r
 	ignore_char:
 		disr = sio_in(up, TXX9_SIDISR);
 	} while (!(disr & TXX9_SIDISR_UVALID) && (max_count-- > 0));
+	spin_unlock(&up->port.lock);
 	tty_flip_buffer_push(tty);
+	spin_lock(&up->port.lock);
 	*status = disr;
 }
 

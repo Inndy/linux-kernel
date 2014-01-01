@@ -13,21 +13,26 @@
  *  This driver probably works with non-Apple versions of the
  *  Broadcom chipset...
  *
- *  The contents of this file are subject to the Open
- *  Software License version 1.1 that can be found at
- *  http://www.opensource.org/licenses/osl-1.1.txt and is included herein
- *  by reference.
  *
- *  Alternatively, the contents of this file may be used under the terms
- *  of the GNU General Public License version 2 (the "GPL") as distributed
- *  in the kernel source COPYING file, in which case the provisions of
- *  the GPL are applicable instead of the above.  If you wish to allow
- *  the use of your version of this file only under the terms of the
- *  GPL and not to allow others to use your version of this file under
- *  the OSL, indicate your decision by deleting the provisions above and
- *  replace them with the notice and other provisions required by the GPL.
- *  If you do not delete the provisions above, a recipient may use your
- *  version of this file under either the OSL or the GPL.
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2, or (at your option)
+ *  any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; see the file COPYING.  If not, write to
+ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+ *
+ *
+ *  libata documentation is available via 'make {ps|pdf}docs',
+ *  as Documentation/DocBook/libata.*
+ *
+ *  Hardware documentation available under NDA.
  *
  */
 
@@ -39,8 +44,9 @@
 #include <linux/blkdev.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
-#include "scsi.h"
+#include <linux/device.h>
 #include <scsi/scsi_host.h>
+#include "scsi_typedefs.h"
 #include <linux/libata.h>
 
 #ifdef CONFIG_PPC_OF
@@ -49,8 +55,15 @@
 #endif /* CONFIG_PPC_OF */
 
 #define DRV_NAME	"sata_svw"
-#define DRV_VERSION	"1.05"
+#define DRV_VERSION	"1.07"
 
+#ifdef CONFIG_MIPS_BRCM97XXX
+#include <linux/types.h>
+#include <asm/brcmstb/common/brcmstb.h>
+
+#endif
+
+	
 /* Taskfile registers offsets */
 #define K2_SATA_TF_CMD_OFFSET		0x00
 #define K2_SATA_TF_DATA_OFFSET		0x00
@@ -79,8 +92,10 @@
 /* Port stride */
 #define K2_SATA_PORT_OFFSET		0x100
 
+static uint8_t k2_stat_check_status(struct ata_port *ap);
 
-static u32 k2_sata_scr_read (struct ata_port *ap, unsigned int sc_reg)
+
+static uint32_t k2_sata_scr_read (struct ata_port *ap, unsigned int sc_reg)
 {
 	if (sc_reg > SCR_CONTROL)
 		return 0xffffffffU;
@@ -103,26 +118,26 @@ static void k2_sata_tf_load(struct ata_port *ap, struct ata_taskfile *tf)
 	unsigned int is_addr = tf->flags & ATA_TFLAG_ISADDR;
 
 	if (tf->ctl != ap->last_ctl) {
-		writeb(tf->ctl, ioaddr->ctl_addr);
+		writeb(tf->ctl, (void *)ioaddr->ctl_addr);
 		ap->last_ctl = tf->ctl;
 		ata_wait_idle(ap);
 	}
 	if (is_addr && (tf->flags & ATA_TFLAG_LBA48)) {
-		writew(tf->feature | (((u16)tf->hob_feature) << 8), ioaddr->feature_addr);
-		writew(tf->nsect | (((u16)tf->hob_nsect) << 8), ioaddr->nsect_addr);
-		writew(tf->lbal | (((u16)tf->hob_lbal) << 8), ioaddr->lbal_addr);
-		writew(tf->lbam | (((u16)tf->hob_lbam) << 8), ioaddr->lbam_addr);
-		writew(tf->lbah | (((u16)tf->hob_lbah) << 8), ioaddr->lbah_addr);
+		writew(tf->feature | (((u16)tf->hob_feature) << 8), (void *)ioaddr->feature_addr);
+		writew(tf->nsect | (((u16)tf->hob_nsect) << 8), (void *)ioaddr->nsect_addr);
+		writew(tf->lbal | (((u16)tf->hob_lbal) << 8), (void *)ioaddr->lbal_addr);
+		writew(tf->lbam | (((u16)tf->hob_lbam) << 8), (void *)ioaddr->lbam_addr);
+		writew(tf->lbah | (((u16)tf->hob_lbah) << 8), (void *)ioaddr->lbah_addr);
 	} else if (is_addr) {
-		writew(tf->feature, ioaddr->feature_addr);
-		writew(tf->nsect, ioaddr->nsect_addr);
-		writew(tf->lbal, ioaddr->lbal_addr);
-		writew(tf->lbam, ioaddr->lbam_addr);
-		writew(tf->lbah, ioaddr->lbah_addr);
+		writew(tf->feature, (void *)ioaddr->feature_addr);
+		writew(tf->nsect, (void *)ioaddr->nsect_addr);
+		writew(tf->lbal, (void *)ioaddr->lbal_addr);
+		writew(tf->lbam, (void *)ioaddr->lbam_addr);
+		writew(tf->lbah, (void *)ioaddr->lbah_addr);
 	}
 
 	if (tf->flags & ATA_TFLAG_DEVICE)
-		writeb(tf->device, ioaddr->device_addr);
+		writeb(tf->device, (void *)ioaddr->device_addr);
 
 	ata_wait_idle(ap);
 }
@@ -131,16 +146,24 @@ static void k2_sata_tf_load(struct ata_port *ap, struct ata_taskfile *tf)
 static void k2_sata_tf_read(struct ata_port *ap, struct ata_taskfile *tf)
 {
 	struct ata_ioports *ioaddr = &ap->ioaddr;
-	u16 nsect, lbal, lbam, lbah;
+	u16 nsect, lbal, lbam, lbah, feature;
 
-	nsect = tf->nsect = readw(ioaddr->nsect_addr);
-	lbal = tf->lbal = readw(ioaddr->lbal_addr);
-	lbam = tf->lbam = readw(ioaddr->lbam_addr);
-	lbah = tf->lbah = readw(ioaddr->lbah_addr);
-	tf->device = readw(ioaddr->device_addr);
+	tf->command = k2_stat_check_status(ap);
+	tf->device = readw((void *)ioaddr->device_addr);
+	feature = readw((void *)ioaddr->error_addr);
+	nsect = readw((void *)ioaddr->nsect_addr);
+	lbal = readw((void *)ioaddr->lbal_addr);
+	lbam = readw((void *)ioaddr->lbam_addr);
+	lbah = readw((void *)ioaddr->lbah_addr);
+
+	tf->feature = feature;
+	tf->nsect = nsect;
+	tf->lbal = lbal;
+	tf->lbam = lbam;
+	tf->lbah = lbah;
 
 	if (tf->flags & ATA_TFLAG_LBA48) {
-		tf->hob_feature = readw(ioaddr->error_addr) >> 8;
+		tf->hob_feature = feature >> 8;
 		tf->hob_nsect = nsect >> 8;
 		tf->hob_lbal = lbal >> 8;
 		tf->hob_lbam = lbam >> 8;
@@ -195,18 +218,18 @@ static void k2_bmdma_start_mmio (struct ata_queued_cmd *qc)
 	/* start host DMA transaction */
 	dmactl = readb(mmio + ATA_DMA_CMD);
 	writeb(dmactl | ATA_DMA_START, mmio + ATA_DMA_CMD);
-	/* There is a race condition in certain SATA controllers that can 
-	   be seen when the r/w command is given to the controller before the 
+	/* There is a race condition in certain SATA controllers that can
+	   be seen when the r/w command is given to the controller before the
 	   host DMA is started. On a Read command, the controller would initiate
 	   the command to the drive even before it sees the DMA start. When there
-	   are very fast drives connected to the controller, or when the data request 
+	   are very fast drives connected to the controller, or when the data request
 	   hits in the drive cache, there is the possibility that the drive returns a part
 	   or all of the requested data to the controller before the DMA start is issued.
 	   In this case, the controller would become confused as to what to do with the data.
 	   In the worst case when all the data is returned back to the controller, the
 	   controller could hang. In other cases it could return partial data returning
 	   in data corruption. This problem has been seen in PPC systems and can also appear
-	   on an system with very fast disks, where the SATA controller is sitting behind a 
+	   on an system with very fast disks, where the SATA controller is sitting behind a
 	   number of bridges, and hence there is significant latency between the r/w command
 	   and the start command. */
 	/* issue r/w command if the access is to ATA*/
@@ -214,7 +237,7 @@ static void k2_bmdma_start_mmio (struct ata_queued_cmd *qc)
 		ap->ops->exec_command(ap, &qc->tf);
 }
 
-									      
+
 static u8 k2_stat_check_status(struct ata_port *ap)
 {
        	return readl((void *) ap->ioaddr.status_addr);
@@ -268,7 +291,7 @@ static int k2_sata_proc_info(struct Scsi_Host *shost, char *page, char **start,
 #endif /* CONFIG_PPC_OF */
 
 
-static Scsi_Host_Template k2_sata_sht = {
+static struct scsi_host_template k2_sata_sht = {
 	.module			= THIS_MODULE,
 	.name			= DRV_NAME,
 	.ioctl			= ata_scsi_ioctl,
@@ -288,11 +311,10 @@ static Scsi_Host_Template k2_sata_sht = {
 	.proc_info		= k2_sata_proc_info,
 #endif
 	.bios_param		= ata_std_bios_param,
-	.ordered_flush		= 1,
 };
 
 
-static struct ata_port_operations k2_sata_ops = {
+static const struct ata_port_operations k2_sata_ops = {
 	.port_disable		= ata_port_disable,
 	.tf_load		= k2_sata_tf_load,
 	.tf_read		= k2_sata_tf_read,
@@ -336,17 +358,253 @@ static void k2_sata_setup_port(struct ata_ioports *port, unsigned long base)
 }
 
 
+#ifdef CONFIG_MIPS_BRCM97XXX
+#define WRITE_CMD		1
+#define READ_CMD                2
+#define CMD_DONE                (1 << 15)
+#define SATA_MMIO               0x24
+#define SATA_MMIO_SCR2  	0x48
+
+// 1. port is SATA port ( 0 or 1)
+// 2. reg is the address of the MDIO register ( see spec )
+// 3. MMIO_BASE_ADDR  is MMIO base address from SATA PCI configuration
+// registers addr 24-27
+static uint16_t __devinit mdio_read_reg( int port, int reg)
+{
+	volatile unsigned int *mdio = (volatile unsigned int *) ((MMIO_OFS + 0x8c));
+	volatile unsigned int pSel = 1 << port;
+	uint32_t cmd  = WRITE_CMD;
+	
+	if( reg > 0x13 )
+	return( -1 );
+
+	//Select Port
+	writel(pSel<<16 | (cmd << 13) | 7, mdio);             //using dev_addr 0
+	while( !(readl(mdio) & CMD_DONE) )
+	udelay( 1);     //wait
+
+	writel((READ_CMD << 13) + reg, mdio);
+	while( !(readl(mdio) & CMD_DONE) )
+	udelay( 1 );    //wait
+
+	return( readl(mdio) >> 16 );
+}
+
+static void __devinit mdio_write_reg(int port, int reg, uint16_t val )
+{
+	volatile unsigned int *mdio = (volatile unsigned int  *) ((MMIO_OFS + 0x8c) /*+ (0x100 * port) */);
+	volatile unsigned int pSel = 1 << port;
+	uint32_t cmd  = WRITE_CMD;
+	
+	if( reg > 0x13 )
+	return;
+
+	//Select Port
+	writel(pSel<<16 | (cmd << 13) | 7, mdio);             //using dev_addr 0
+	while( !(readl(mdio) & CMD_DONE) )
+	udelay( 1);     //wait
+
+	writel((val << 16) + (WRITE_CMD << 13) + reg, mdio);          //using dev_addr 0
+	while( !(readl(mdio) & CMD_DONE) )
+	udelay( 1 );    //wait
+}
+
+void DisablePHY(int port)
+{
+	uint32_t *pScr2 = (uint32_t *)(MMIO_OFS + 0x100*port + 0x48);
+	writel(1, pScr2);
+}
+
+void EnablePHY(int port)
+{
+	uint32_t *pScr2 = (uint32_t *)(MMIO_OFS + 0x100*port + 0x48);
+	writel(0, pScr2);
+}
+
+/* Fix to probe some Seagate HDs with ST controllers */
+static void bcm_sg_workaround(int port)
+{
+	int tmp16;
+
+	DisablePHY(port);
+
+	//Change interpolation BW
+	tmp16 = mdio_read_reg(port,9);
+
+	mdio_write_reg(port,9,tmp16 | 1); //Bump up interpolation
+
+	//Do analog reset
+	tmp16 = mdio_read_reg(port,4);
+	tmp16 |= 8;
+	mdio_write_reg(port,4,tmp16);
+
+	udelay( 1000 );      //wait 1 ms
+	tmp16 &= 0xFFF7;
+	mdio_write_reg(port,4,tmp16 ); // Take reset out
+	udelay( 1000 );      //wait
+
+	//Enable PHY
+	EnablePHY(port);
+}
+
+
+ /* Fix to recognize some WD models */
+static void bcm97xxx_sata_init(struct pci_dev *dev, struct ata_probe_ent *probe_ent)
+{
+	unsigned int reg;
+	
+	if(dev->device == PCI_DEVICE_ID_SERVERWORKS_BCM7400B0)
+	{
+		volatile uint16_t tmp;
+		volatile uint32_t tmp32;
+		int port,i;
+
+		//dump bridge regs
+		for (i=0;i<9; i++) { //skip after this
+			printk("Addr %x Value %x\n", 0xb0500200 + i * 4,
+				*(volatile uint32_t *)(0xb0500200 + i * 4));
+		}
+
+		//program VCO step bit [12:10] start with 111
+		mdio_write_reg(0,0x13,0x1c00);
+
+		printk("mdio_write_reg(0,0x13,0x1c00) done\n");
+
+		udelay(100000);
+
+		//start pll tuner
+		mdio_write_reg(0,0x13,0x1e00); // 
+
+		printk("mdio_write_reg(0,0x13,0x1e00) done\n");
+		udelay(10000); // wait
+
+		printk("Checking lock \n");
+		//check lock bit
+
+		do {
+			tmp = mdio_read_reg(0,0x7);
+			printk("Wait for PLL lock mdio_read_reg(0,0x7) returns %08x\n", tmp);
+		} while((tmp & 0x8000) != 0x8000);
+
+		printk("PLL locked\n");
+		//do analog reset
+		mdio_write_reg(0,0x4,8);
+		printk("mdio_write_reg(0,0x4,8) done\n");
+		udelay(10000); // wait
+		mdio_write_reg(0,0x4,0);
+
+		printk("mdio_write_reg(0,0x4,0) done\n");
+		for(port = 0; port < 2; port++)
+		{
+			printk("Reset port %d addr %x\n", port, MMIO_OFS + 0x48 + port*0x100);
+			writel(1, MMIO_OFS + 0x48 + port * 0x100);
+			udelay(10000); // wait
+			//reset deskew TX FIFO
+			//1. select port
+			mdio_write_reg(0,7,1 << port);
+			//toggle reset bit
+			mdio_write_reg(0,0xd,0x8000);
+			udelay(10000); // wait
+			mdio_write_reg(0,0xd,0x0000);
+			udelay(10000); // wait
+			writel(0, MMIO_OFS + 0x48 + port * 0x100);
+
+			//enable 4G support
+			tmp32 = readl(MMIO_OFS + 0x84 + port * 0x100);
+			writel(tmp32 | 0x00000400, MMIO_OFS + 0x84 + port * 0x100);
+		}
+	}
+	
+	// For the BCM7038, let the PCI configuration in brcmpci_fixups.c hold.
+	if (dev->device != PCI_DEVICE_ID_SERVERWORKS_BCM7038) 
+	{
+		/* force Master Latency Timer value to 64 PCICLKs */
+		pci_write_config_byte(dev, PCI_LATENCY_TIMER, 0x40);
+	}	
+	else
+    	{
+        	int port;
+	        uint32_t mmio_reg;
+
+#ifdef CONFIG_MIPS_BCM7038
+#define FIXED_REV       0x70380024      //BCM7038C4,  BCM7438A0 (0x7438_0000) would also pass the test
+static volatile unsigned long* pSundryRev = (volatile unsigned long*) 0xb0404000;
+#elif defined( CONFIG_MIPS_BCM7400 )
+#define FIXED_REV       0x74000001      /****** FIX ME *********/
+static volatile unsigned long* pSundryRev = (volatile unsigned long*) 0xb0404000;
+#elif defined( CONFIG_MIPS_BCM7440 )
+#define FIXED_REV       0
+static volatile unsigned long* pSundryRev = (volatile unsigned long*) 0xb0404000;
+#elif defined( CONFIG_MIPS_BCM7401 )
+#define FIXED_REV       0x74010010      /****** FIX ME Done *********/
+static volatile unsigned long* pSundryRev = (volatile unsigned long*) 0xb0404000;
+#elif defined( CONFIG_MIPS_BCM7403 )
+#define FIXED_REV       0x74030010      /****** FIX ME Done *********/
+static volatile unsigned long* pSundryRev = (volatile unsigned long*) 0xb0404000;
+#elif defined( CONFIG_MIPS_BCM7118 )
+#define FIXED_REV       0
+static volatile unsigned long* pSundryRev = (volatile unsigned long*) 0xb0404000;
+#endif
+
+	printk("SUNDRY revision = %08lx\n", *pSundryRev);
+
+        if (*pSundryRev >= FIXED_REV) {
+			/*
+			* Disable the port.
+			* The phy for a port can be disabled by setting bit 0 of register
+			* at offset 0x48 in the ports MMIO space
+			*/
+			(void) pci_read_config_dword(dev, SATA_MMIO, &mmio_reg);
+			mmio_reg = KSEG1ADDR(mmio_reg);
+			reg = readl(mmio_reg+SATA_MMIO_SCR2);
+			writel(reg | 0x01, mmio_reg+SATA_MMIO_SCR2);
+
+			/*
+			* Before accessing the MDIO registers through pci space disable external MDIO access.
+			* write MDIO register at offset 0x07 with (1 << port number) where port number starts at 0.
+			* Read MDIO register at offset 0x0D into variable reg.
+			- reg_0d = reg_0d | 0x04
+			- Write reg_0d to MDIO register at offset 0x0D.
+			*/
+			for (port = 0; port < probe_ent->n_ports; port++) {
+				// Choose the port
+				//mdio_write_reg(port, 7, 1<<port);
+				// Read reg 0xd
+				reg = mdio_read_reg(port, 0xd);
+				printk("MDIO Read port%d: %04x\n", port, reg);
+				reg |= 0x4;
+				mdio_write_reg(port, 0xd, reg);
+				reg = mdio_read_reg(port, 0xd);
+				printk("MDIO Read2 port%d: %04x\n", port, reg);
+			}
+			// Re-enable the PHY
+			reg = readl(mmio_reg+SATA_MMIO_SCR2);
+			writel(reg ^ 0x01, mmio_reg+SATA_MMIO_SCR2);
+		}
+	
+		//PR22401: Identify Seagate drives with ST controllers.
+		{
+			int port;
+	
+			for (port=0; port < probe_ent->n_ports; port++)
+			bcm_sg_workaround(port);
+		}
+	}
+}
+#endif	// CONFIG_MIPS_BRCM97XXX
+
 static int k2_sata_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	static int printed_version;
 	struct ata_probe_ent *probe_ent = NULL;
 	unsigned long base;
-	void *mmio_base;
+	void __iomem *mmio_base;
 	int pci_dev_busy = 0;
 	int rc;
+	int i;
 
 	if (!printed_version++)
-		printk(KERN_DEBUG DRV_NAME " version " DRV_VERSION "\n");
+		dev_printk(KERN_DEBUG, &pdev->dev, "version " DRV_VERSION "\n");
 
 	/*
 	 * If this driver happens to only be useful on Apple's K2, then
@@ -386,8 +644,17 @@ static int k2_sata_init_one (struct pci_dev *pdev, const struct pci_device_id *e
 	probe_ent->dev = pci_dev_to_dev(pdev);
 	INIT_LIST_HEAD(&probe_ent->node);
 
-	mmio_base = ioremap(pci_resource_start(pdev, 5),
-		            pci_resource_len(pdev, 5));
+#if defined( CONFIG_MIPS_BCM7038C0 ) || defined( CONFIG_MIPS_BCM7401 )
+#define CPU2PCI_PCI_SATA_PHYS_IO_WIN0_BASE   0x10520000
+#define SATA_IO_BASE KSEG1ADDR(CPU2PCI_PCI_SATA_PHYS_IO_WIN0_BASE)
+	printk("pci_resource_start(pdev, 5) = 0x%lx\n", (unsigned long) pci_resource_start(pdev, 5));
+	printk("SATA_IO_BASE = 0x%lx\n", (unsigned long) SATA_IO_BASE);
+/*	mmio_base = SATA_IO_BASE; */
+ 	mmio_base = KSEG1ADDR(pci_resource_start(pdev, 5));
+#else
+	//mmio_base = pci_iomap(pdev, 5, 0);
+	mmio_base = (void __iomem *)pci_resource_start(pdev, 5);
+#endif
 	if (mmio_base == NULL) {
 		rc = -ENOMEM;
 		goto err_out_free_ent;
@@ -405,11 +672,25 @@ static int k2_sata_init_one (struct pci_dev *pdev, const struct pci_device_id *e
 	writel(0xffffffff, mmio_base + K2_SATA_SCR_ERROR_OFFSET);
 	writel(0x0, mmio_base + K2_SATA_SIM_OFFSET);
 
+#if defined (CONFIG_MIPS_BCM7440)
+    /*
+    ** Enable ECO fix to force SYNCs on the SATA interface
+    ** between PIO data transfer of the packet CDB and DMA mode transfer.
+    */
+	writel(0x20000000, mmio_base + K2_SATA_SIM_OFFSET);
+#endif
+
 	probe_ent->sht = &k2_sata_sht;
+#if defined (CONFIG_MIPS_BCM7440)
+	probe_ent->host_flags = ATA_FLAG_SATA | ATA_FLAG_SATA_RESET |
+				ATA_FLAG_NO_LEGACY | ATA_FLAG_MMIO | ATA_FLAG_SRST;
+#else
 	probe_ent->host_flags = ATA_FLAG_SATA | ATA_FLAG_SATA_RESET |
 				ATA_FLAG_NO_LEGACY | ATA_FLAG_MMIO;
+#endif
 	probe_ent->port_ops = &k2_sata_ops;
-	probe_ent->n_ports = 4;
+	//probe_ent->n_ports = 4;
+	probe_ent->n_ports = ent->driver_data;
 	probe_ent->irq = pdev->irq;
 	probe_ent->irq_flags = SA_SHIRQ;
 	probe_ent->mmio_base = mmio_base;
@@ -420,15 +701,20 @@ static int k2_sata_init_one (struct pci_dev *pdev, const struct pci_device_id *e
 	probe_ent->pio_mask = 0x1f;
 	probe_ent->mwdma_mask = 0x7;
 	probe_ent->udma_mask = 0x7f;
+	//probe_ent->udma_mask = 0x3f;
 
-	/* We have 4 ports per PCI function */
-	k2_sata_setup_port(&probe_ent->port[0], base + 0 * K2_SATA_PORT_OFFSET);
-	k2_sata_setup_port(&probe_ent->port[1], base + 1 * K2_SATA_PORT_OFFSET);
-	k2_sata_setup_port(&probe_ent->port[2], base + 2 * K2_SATA_PORT_OFFSET);
-	k2_sata_setup_port(&probe_ent->port[3], base + 3 * K2_SATA_PORT_OFFSET);
+	/* different controllers have different number of ports - currently 4 or 8 */
+	/* All ports are on the same function. Multi-function device is no
+	 * longer available. This should not be seen in any system. */
+	for (i = 0; i < ent->driver_data; i++)
+		k2_sata_setup_port(&probe_ent->port[i], base + i * K2_SATA_PORT_OFFSET);
 
 	pci_set_master(pdev);
 
+#ifdef CONFIG_MIPS_BRCM97XXX 
+	bcm97xxx_sata_init(pdev, probe_ent);
+#endif	
+	
 	/* FIXME: check ata_device_add return value */
 	ata_device_add(probe_ent);
 	kfree(probe_ent);
@@ -445,11 +731,19 @@ err_out:
 	return rc;
 }
 
-
-static struct pci_device_id k2_sata_pci_tbl[] = {
-	{ 0x1166, 0x0240, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0 },
-	{ 0x1166, 0x0241, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0 },
-	{ 0x1166, 0x0242, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0 },
+/* 0x240 is device ID for Apple K2 device
+ * 0x241 is device ID for Serverworks Frodo4
+ * 0x242 is device ID for Serverworks Frodo8
+ * 0x24a is device ID for BCM5785 (aka HT1000) HT southbridge integrated SATA
+ * controller
+ * */
+static const struct pci_device_id k2_sata_pci_tbl[] = {
+        { PCI_VENDOR_ID_SERVERWORKS, PCI_DEVICE_ID_SERVERWORKS_BCM7038, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 2},
+	//{ 0x1166, 0x0240, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 4 },
+	//{ 0x1166, 0x0241, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 4 },
+	//{ 0x1166, 0x0242, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 8 },
+	//{ 0x1166, 0x024a, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 4 },
+	//{ 0x1166, 0x024b, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 4 },
 	{ }
 };
 

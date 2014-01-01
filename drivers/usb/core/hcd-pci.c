@@ -85,24 +85,29 @@ int usb_hcd_pci_probe (struct pci_dev *dev, const struct pci_device_id *id)
 	}
 
 	if (driver->flags & HCD_MEMORY) {	// EHCI, OHCI
-		hcd->rsrc_start = pci_resource_start (dev, 0);
-		hcd->rsrc_len = pci_resource_len (dev, 0);
-		if (!request_mem_region (hcd->rsrc_start, hcd->rsrc_len,
+		hcd->rsrc_start = (u64) pci_resource_start (dev, 0);
+		hcd->rsrc_len = (u64) pci_resource_len (dev, 0);
+		if (!request_mem_region ((u32) hcd->rsrc_start, (u32) hcd->rsrc_len,
 				driver->description)) {
 			dev_dbg (&dev->dev, "controller already in use\n");
+printk("request_mem_region [%08x,%08x] failed, continuing\n", (u32) hcd->rsrc_start, (u32) hcd->rsrc_len);
 			retval = -EBUSY;
 			goto err2;
 		}
-		hcd->regs = ioremap_nocache (hcd->rsrc_start, hcd->rsrc_len);
+		hcd->regs = ioremap_nocache ((u32) hcd->rsrc_start, (u32) hcd->rsrc_len);
 		if (hcd->regs == NULL) {
 			dev_dbg (&dev->dev, "error mapping memory\n");
+printk("error mapping memory\n");
 			retval = -EFAULT;
 			goto err3;
 		}
+printk("usb_hcd_pci_probe: ioremap_nocache(start=%08x, len=%08x\n", 
+	(u32) hcd->rsrc_start, (u32) hcd->rsrc_len);
 
 	} else { 				// UHCI
 		int	region;
 
+printk("usb_hcd_pci_probe: Should not get here, UHCI\n");
 		for (region = 0; region < PCI_ROM_RESOURCE; region++) {
 			if (!(pci_resource_flags (dev, region) &
 					IORESOURCE_IO))
@@ -110,12 +115,13 @@ int usb_hcd_pci_probe (struct pci_dev *dev, const struct pci_device_id *id)
 
 			hcd->rsrc_start = pci_resource_start (dev, region);
 			hcd->rsrc_len = pci_resource_len (dev, region);
-			if (request_region (hcd->rsrc_start, hcd->rsrc_len,
+			if (request_region ((u32) hcd->rsrc_start, (u32) hcd->rsrc_len,
 					driver->description))
 				break;
 		}
 		if (region == PCI_ROM_RESOURCE) {
 			dev_dbg (&dev->dev, "no i/o regions available\n");
+printk("no i/o regions available\n");
 			retval = -EBUSY;
 			goto err1;
 		}
@@ -128,15 +134,17 @@ int usb_hcd_pci_probe (struct pci_dev *dev, const struct pci_device_id *id)
 	pci_set_master (dev);
 
 	retval = usb_add_hcd (hcd, dev->irq, SA_SHIRQ);
-	if (retval != 0)
+	if (retval != 0) {
+printk("usb_add_hcd failed\n");
 		goto err4;
+	}
 	return retval;
 
  err4:
 	if (driver->flags & HCD_MEMORY) {
 		iounmap (hcd->regs);
  err3:
-		release_mem_region (hcd->rsrc_start, hcd->rsrc_len);
+		release_mem_region ((u32) hcd->rsrc_start, (u32) hcd->rsrc_len);
 	} else
 		release_region (hcd->rsrc_start, hcd->rsrc_len);
  err2:

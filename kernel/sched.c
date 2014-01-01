@@ -47,6 +47,7 @@
 #include <linux/syscalls.h>
 #include <linux/times.h>
 #include <linux/acct.h>
+#include <linux/kgdb.h>
 #include <asm/tlb.h>
 
 #include <asm/unistd.h>
@@ -4972,6 +4973,9 @@ void __might_sleep(char *file, int line)
 {
 #if defined(in_atomic)
 	static unsigned long prev_jiffy;	/* ratelimiting */
+
+	if (atomic_read(&debugger_active))
+		return;
 
 	if ((in_atomic() || irqs_disabled()) &&
 	    system_state == SYSTEM_RUNNING && !oops_in_progress) {

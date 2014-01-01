@@ -384,6 +384,47 @@ static inline unsigned long __xchg(unsigned long x, volatile void *ptr, int size
 
 #endif /* CONFIG_SMP */
 
+#define	__HAVE_ARCH_CMPXCHG	1
+
+#include <asm/types.h>
+
+static inline unsigned long __cmpxchg_u32(volatile int *m, unsigned long old,
+					unsigned long new)
+{
+	u32 retval;
+	unsigned long flags;
+
+	local_irq_save(flags);
+	retval = *m;
+	if (retval == old)
+		*m = new;
+	local_irq_restore(flags);	/* implies memory barrier  */
+
+	return retval;
+}
+
+/* This function doesn't exist, so you'll get a linker error
+   if something tries to do an invalid cmpxchg().  */
+extern void __cmpxchg_called_with_bad_pointer(void);
+
+static inline unsigned long __cmpxchg(volatile void * ptr, unsigned long old,
+	unsigned long new, int size)
+{
+	switch (size) {
+	case 4:
+		return __cmpxchg_u32(ptr, old, new);
+	}
+	__cmpxchg_called_with_bad_pointer();
+	return old;
+}
+
+#define cmpxchg(ptr,o,n)						 \
+  ({									 \
+     __typeof__(*(ptr)) _o_ = (o);					 \
+     __typeof__(*(ptr)) _n_ = (n);					 \
+     (__typeof__(*(ptr))) __cmpxchg((ptr), (unsigned long)_o_,		 \
+				    (unsigned long)_n_, sizeof(*(ptr))); \
+  })
 #endif /* __ASSEMBLY__ */
 
 #define arch_align_stack(x) (x)

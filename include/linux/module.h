@@ -207,7 +207,16 @@ enum module_state
 	MODULE_STATE_LIVE,
 	MODULE_STATE_COMING,
 	MODULE_STATE_GOING,
+ 	MODULE_STATE_GONE,
 };
+
+#ifdef CONFIG_KGDB
+#define MAX_SECTNAME 31
+struct mod_section {
+       void *address;
+       char name[MAX_SECTNAME + 1];
+};
+#endif
 
 /* Similar stuff for section attributes. */
 #define MODULE_SECT_NAME_LEN 32
@@ -236,6 +245,24 @@ struct module
 	/* Unique handle for this module */
 	char name[MODULE_NAME_LEN];
 
+#ifdef CONFIG_KGDB
+	/* keep kgdb info at the begining so that gdb doesn't have a chance to
+	 * miss out any fields */
+	unsigned long num_sections;
+	struct mod_section *mod_sections;
+
+	/*
+	 * PR29963: reorder struct members in kgdb build to preserve
+	 * binary compatibility with non-kgdb kernel modules from the released
+	 * rootfs
+	 */
+	/* Sysfs stuff. */
+	struct module_kobject mkobj;
+	struct module_param_attrs *param_attrs;
+
+	/* Exported symbols (partial) */
+	const unsigned long *crcs;
+#else
 	/* Sysfs stuff. */
 	struct module_kobject mkobj;
 	struct module_param_attrs *param_attrs;
@@ -244,6 +271,7 @@ struct module
 	const struct kernel_symbol *syms;
 	unsigned int num_syms;
 	const unsigned long *crcs;
+#endif
 
 	/* GPL-only exported symbols. */
 	const struct kernel_symbol *gpl_syms;
@@ -290,6 +318,12 @@ struct module
 
 	/* Destruction function. */
 	void (*exit)(void);
+#endif
+
+#ifdef CONFIG_KGDB
+	/* Exported symbols (partial) */
+	const struct kernel_symbol *syms;
+	unsigned int num_syms;
 #endif
 
 #ifdef CONFIG_KALLSYMS

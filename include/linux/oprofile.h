@@ -13,6 +13,7 @@
 #ifndef OPROFILE_H
 #define OPROFILE_H
 
+#include <linux/init.h>
 #include <linux/types.h>
 #include <linux/spinlock.h>
 #include <asm/atomic.h>
@@ -48,7 +49,7 @@ struct oprofile_operations {
  *
  * If an error occurs, the fields should be left untouched.
  */
-int oprofile_arch_init(struct oprofile_operations * ops);
+int __init oprofile_arch_init(struct oprofile_operations ** ops);
  
 /**
  * One-time exit/cleanup for the arch.

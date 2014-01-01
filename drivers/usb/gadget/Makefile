@@ -17,6 +17,7 @@ g_serial-objs			:= serial.o usbstring.o config.o epautoconf.o
 gadgetfs-objs			:= inode.o
 g_file_storage-objs		:= file_storage.o usbstring.o config.o \
 					epautoconf.o
+g_hdr5k_usbstor-objs	:= hdr5k_usbstor.o usbstring.o config.o epautoconf.o
 
 ifeq ($(CONFIG_USB_ETH_RNDIS),y)
 	g_ether-objs		+= rndis.o
@@ -26,5 +27,6 @@ obj-$(CONFIG_USB_ZERO)		+= g_zero.o
 obj-$(CONFIG_USB_ETH)		+= g_ether.o
 obj-$(CONFIG_USB_GADGETFS)	+= gadgetfs.o
 obj-$(CONFIG_USB_FILE_STORAGE)	+= g_file_storage.o
+obj-$(CONFIG_HDR5K_USB_STORAGE)	+= g_hdr5k_usbstor.o
 obj-$(CONFIG_USB_G_SERIAL)	+= g_serial.o
 

@@ -47,17 +47,19 @@ static int early_uart_registered __initdata;
 static unsigned int __init serial_in(struct uart_port *port, int offset)
 {
 	if (port->iotype == UPIO_MEM)
-		return readb(port->membase + offset);
+        // THT: Changed from readb for BE
+		return readl(port->membase + (offset << port->regshift));
 	else
-		return inb(port->iobase + offset);
+		return inb(port->iobase + (offset << port->regshift));
 }
 
 static void __init serial_out(struct uart_port *port, int offset, int value)
 {
 	if (port->iotype == UPIO_MEM)
-		writeb(value, port->membase + offset);
+        // THT: Changed from writeb for BE
+		writel(value, port->membase + (offset << port->regshift));
 	else
-		outb(value, port->iobase + offset);
+		outb(value, port->iobase + (offset << port->regshift));
 }
 
 #define BOTH_EMPTY (UART_LSR_TEMT | UART_LSR_THRE)
@@ -145,6 +147,10 @@ static int __init parse_options(struct early_uart_device *device, char *options)
 		return -ENODEV;
 
 	port->uartclk = BASE_BAUD * 16;
+#ifdef CONFIG_MIPS_BRCM97XXX
+	port->regshift = 2; // BRCM 16550 UARTs are 4 byte aligned
+#endif
+
 	if (!strncmp(options, "mmio,", 5)) {
 		port->iotype = UPIO_MEM;
 		port->mapbase = simple_strtoul(options + 5, &options, 0);
@@ -205,9 +211,16 @@ static struct console early_uart_console __initdata = {
 
 static int __init early_uart_console_init(void)
 {
+#ifdef CONFIG_MIPS_BRCM97XXX
+	extern int console_initialized;
+#endif
+	
 	if (!early_uart_registered) {
 		register_console(&early_uart_console);
 		early_uart_registered = 1;
+#ifdef CONFIG_MIPS_BRCM97XXX
+		console_initialized = 1;
+#endif
 	}
 	return 0;
 }

@@ -14,6 +14,10 @@
 #include <asm/cacheflush.h>
 #include <asm/io.h>
 #include <asm/tlbflush.h>
+#if defined( CONFIG_DISCONTIGMEM ) && defined( CONFIG_MIPS_BRCM97XXX )
+#include <asm/brcmstb/common/discontig.h>
+#endif
+
 
 static inline void remap_area_pte(pte_t * pte, unsigned long address,
 	phys_t size, phys_t phys_addr, unsigned long flags)
@@ -79,9 +83,14 @@ static int remap_area_pages(unsigned long address, phys_t phys_addr,
 		BUG();
 	spin_lock(&init_mm.page_table_lock);
 	do {
+		pud_t *pud;
 		pmd_t *pmd;
-		pmd = pmd_alloc(&init_mm, dir, address);
+
 		error = -ENOMEM;
+		pud = pud_alloc(&init_mm, dir, address);
+		if (!pud)
+			break;
+		pmd = pmd_alloc(&init_mm, pud, address);
 		if (!pmd)
 			break;
 		if (remap_area_pmd(pmd, address, end - address,
@@ -94,15 +103,6 @@ static int remap_area_pages(unsigned long address, phys_t phys_addr,
 	spin_unlock(&init_mm.page_table_lock);
 	flush_tlb_all();
 	return error;
-}
-
-/*
- * Allow physical addresses to be fixed up to help 36 bit peripherals.
- */
-phys_t __attribute__ ((weak))
-fixup_bigphys_addr(phys_t phys_addr, phys_t size)
-{
-	return phys_addr;
 }
 
 /*
@@ -141,7 +141,68 @@ void * __ioremap(phys_t phys_addr, phys_t size, unsigned long flags)
 	 */
 	if (IS_LOW512(phys_addr) && IS_LOW512(last_addr) &&
 	    flags == _CACHE_UNCACHED)
-		return (void *) KSEG1ADDR(phys_addr);
+		return (void *) CKSEG1ADDR(phys_addr);
+
+#ifdef CONFIG_DISCONTIGMEM
+#if defined ( CONFIG_MIPS_BCM97438 )
+       if (IS_PA_UPPER_RAM(phys_addr) && flags == _CACHE_UNCACHED) {
+               printk(KERN_ERR "Upper DDR at %08lx cannot be mapped uncached\n", phys_addr);
+               return NULL;
+       }
+#elif defined ( CONFIG_MIPS_BCM7440 )
+        if (IS_PA_UPPER_RAM(phys_addr) && (flags == _CACHE_UNCACHED)) {
+               printk(KERN_ERR "Upper/High DDR at %08lx cannot be mapped uncached\n", phys_addr);
+               return NULL;
+       }
+
+#endif
+
+#endif
+
+#ifndef CONFIG_DISCONTIGMEM
+  #ifdef CONFIG_MIPS_BRCM97XXX
+
+  #if defined( CONFIG_MIPS_BCM7038A0 )
+	if (((phys_addr >= 0xd0000000) && (phys_addr <= 0xe060000b)))
+		
+  #elif defined( CONFIG_MIPS_BCM7038B0 ) || defined( CONFIG_MIPS_BCM7038C0 ) \
+  	|| defined( CONFIG_MIPS_BCM7400 ) 
+	if (((phys_addr >= 0xd0000000) && (phys_addr <= 0xf060000b)))
+		
+  #elif defined( CONFIG_MIPS_BCM3560 ) \
+  	|| defined( CONFIG_MIPS_BCM7401 ) || defined( CONFIG_MIPS_BCM7402 ) \
+	|| defined( CONFIG_MIPS_BCM7118 ) || defined( CONFIG_MIPS_BCM7403 ) \
+	|| defined( CONFIG_MIPS_BCM7452 )
+  	if (((((unsigned long) (phys_addr)) >= 0xd0000000) && (((unsigned long) (phys_addr)) <= 0xf060000b)) ||
+		(((unsigned long) (phys_addr)) >= 0xff400000))
+		
+  #else
+	if (phys_addr >= 0xffe00000)
+  #endif
+  
+    	return (void *) (phys_addr);
+  #endif
+#else
+  /* 97438 Discontiguous memory model */
+  #if defined ( CONFIG_MIPS_BCM97438 )
+        if (((phys_addr >= 0xd0000000) && (phys_addr < 0xe0000000)) ||
+               ((phys_addr >= 0xf0000000) && (phys_addr <= 0xf060000b)))
+                        return (void *) (phys_addr);
+
+       /* else upper ram area is handled just like lower ram, handled below */
+  #elif defined ( CONFIG_MIPS_BCM7440 )
+        if ((phys_addr >= 0xd0000000) && (phys_addr < 0xd8000000))
+                /* 128 MB of PCI-MEM */
+                return (void *) (phys_addr);
+        if ((phys_addr >= 0xf0000000) && (phys_addr < 0xf2000000))
+                /* 32 MB of PCI-IO */
+                return (void *) (0xf8000000 + (phys_addr - 0xf0000000));
+
+  #else
+       #error "Unsupported discontigmem platform"
+  #endif
+
+#endif
 
 	/*
 	 * Don't allow anybody to remap normal RAM that we're using..
@@ -180,7 +241,7 @@ void * __ioremap(phys_t phys_addr, phys_t size, unsigned long flags)
 	return (void *) (offset + (char *)addr);
 }
 
-#define IS_KSEG1(addr) (((unsigned long)(addr) & ~0x1fffffffUL) == KSEG1)
+#define IS_KSEG1(addr) (((unsigned long)(addr) & ~0x1fffffffUL) == CKSEG1)
 
 void __iounmap(volatile void __iomem *addr)
 {
@@ -189,13 +250,61 @@ void __iounmap(volatile void __iomem *addr)
 	if (IS_KSEG1(addr))
 		return;
 
+#ifdef CONFIG_MIPS_BRCM97XXX
+  #ifndef CONFIG_DISCONTIGMEM
+  #if defined( CONFIG_MIPS_BCM7038A0 )
+	if ( (((unsigned long)addr >= 0xd0000000) && ((unsigned long)addr <= 0xe060000b)))
+		return;
+	
+  #elif defined( CONFIG_MIPS_BCM7038B0 ) || defined( CONFIG_MIPS_BCM7038C0 ) \
+  	|| defined( CONFIG_MIPS_BCM7400 )
+	if ( (((unsigned long)addr >= 0xd0000000) && ((unsigned long)addr <= 0xf060000b)))
+		return;
+
+  #elif defined( CONFIG_MIPS_BCM3560 ) \
+  	|| defined( CONFIG_MIPS_BCM7401 ) || defined( CONFIG_MIPS_BCM7402 ) \
+ 	|| defined( CONFIG_MIPS_BCM7118 ) || defined( CONFIG_MIPS_BCM7403 ) \
+	|| defined( CONFIG_MIPS_BCM7452 )
+  	if (((((unsigned long) (addr)) >= 0xd0000000) && (((unsigned long) (addr)) <= 0xf060000b)) ||
+		(((unsigned long) (addr)) >= 0xff400000))
+		return;
+	
+  #else
+	if ((unsigned long)addr >= 0xffe00000)
+		return;
+  #endif
+  #else
+        #if defined(CONFIG_MIPS_BCM97438 )
+           if ((((unsigned long)addr >= 0xd0000000) && ((unsigned long)addr < 0xe0000000)) ||
+                           (((unsigned long)addr >= 0xf0000000) && ((unsigned long)addr <= 0xf060000b)))
+                                                return;
+
+           /* else upper ram area is handled just like lower ram, handled below */
+        #elif defined ( CONFIG_MIPS_BCM7440 )
+                if (((unsigned long)addr >= 0xd0000000) &&
+                        ((unsigned long)addr <  0xd8000000))
+                                /* 128 MB of PCI-MEM */
+                                return;
+                if (((unsigned long)addr >= 0xf8000000) &&
+                        ((unsigned long)addr <  0xfa000000))
+                                /* 32 MB of PCI-IO */
+                                return;
+
+
+        #else
+           #error "Unsupported discontigmem platform"
+        #endif
+  #endif
+
+#endif
+
 	p = remove_vm_area((void *) (PAGE_MASK & (unsigned long __force) addr));
 	if (!p) {
 		printk(KERN_ERR "iounmap: bad address %p\n", addr);
 		return;
 	}
 
-        kfree(p);
+	kfree(p);
 }
 
 EXPORT_SYMBOL(__ioremap);

@@ -160,6 +160,11 @@
 #include <asm/uaccess.h>
 #include <asm/io.h>
 
+#ifdef CONFIG_BLK_DEV_IDE_BCM7XXX
+#include "legacy/bcm71xx_ide.h"
+#endif
+
+
 
 /* default maximum number of failures */
 #define IDE_DEFAULT_MAX_FAILURES 	1
@@ -1797,9 +1802,17 @@ extern void h8300_ide_init(void);
  */
 static void __init probe_for_hwifs (void)
 {
+/* THT: On the 7440, let the SATA do the scan first, so make sure that IDEPCI is first */
 #ifdef CONFIG_BLK_DEV_IDEPCI
 	ide_scan_pcibus(ide_scan_direction);
 #endif /* CONFIG_BLK_DEV_IDEPCI */
+
+#ifdef CONFIG_BLK_DEV_IDE_BCM7XXX
+	{
+		extern void bcm71xx_ide_init(void);
+		bcm71xx_ide_init();
+	}
+#endif
 
 #ifdef CONFIG_ETRAX_IDE
 	{
@@ -1843,6 +1856,12 @@ static void __init probe_for_hwifs (void)
 		q40ide_init();
 	}
 #endif /* CONFIG_BLK_DEV_Q40IDE */
+#ifdef CONFIG_BLK_DEV_IDE_SWARM
+	{
+		extern void swarm_ide_probe(void);
+		swarm_ide_probe();
+	}
+#endif /* CONFIG_BLK_DEV_IDE_SWARM */
 #ifdef CONFIG_BLK_DEV_BUDDHA
 	{
 		extern void buddha_init(void);

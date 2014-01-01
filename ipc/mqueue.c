@@ -384,16 +384,58 @@ static unsigned int mqueue_poll_file(struct file *filp, struct poll_table_struct
 	return retval;
 }
 
+/*******************************************************/
+/* HUMAX Modify 2008.3.6 for support FIFO suspend type */
+#define O_TASK_SUSPEND_FIFO		0x4
+#define O_TASK_SUSPEND_FRONT  	0x20
+#define DEFAULT_MSG_PRIORITY		0x10
+/*******************************************************/
+
 /* Adds current to info->e_wait_q[sr] before element with smaller prio */
 static void wq_add(struct mqueue_inode_info *info, int sr,
 			struct ext_wait_queue *ewp)
 {
 	struct ext_wait_queue *walk;
+/*******************************************************/
+/* HUMAX Modify 2008.3.6 for support FIFO suspend type */
+	struct ext_wait_queue *tmpWalk;
+	struct list_head *ptr;
+/*******************************************************/
 
 	ewp->task = current;
+	if (info->attr.mq_flags & O_TASK_SUSPEND_FRONT)
+	{
+		info->attr.mq_flags = info->attr.mq_flags&~O_TASK_SUSPEND_FRONT;	
+		ptr = info->e_wait_q[sr].list.prev;
+/*
+		if (ptr == &info->e_wait_q[sr].list)
+		{
+			printk("NULL \n");
+			return NULL;
+		}
+*/
+		walk = list_entry(ptr, struct ext_wait_queue, list);
+		list_add_tail(&ewp->list, &walk->list);
 
-	list_for_each_entry(walk, &info->e_wait_q[sr].list, list) {
-		if (walk->task->static_prio <= current->static_prio) {
+		return;
+	}
+
+/*******************************************************/
+/* HUMAX Modify 2008.3.6 for support FIFO suspend type */
+/*******************************************************/
+
+	list_for_each_entry(walk, &info->e_wait_q[sr].list, list) 
+{
+		if(!(info->attr.mq_flags & O_TASK_SUSPEND_FIFO)) /*priority default*/
+		{
+			if (walk->task->prio <= current->prio ||walk->msg->m_type > DEFAULT_MSG_PRIORITY ) 
+			{
+				list_add_tail(&ewp->list, &walk->list);
+				return;
+			}	
+		}
+		else /* FIFO */
+		{
 			list_add_tail(&ewp->list, &walk->list);
 			return;
 		}
@@ -1072,6 +1114,80 @@ out:
 	return ret;
 }
 
+/*******************************************************/
+/* HUMAX Modify 2008.3.6 for support FIFO suspend type */
+/*******************************************************/
+#if 1
+asmlinkage long sys_mq_getsetattr(mqd_t mqdes,
+			const struct mq_attr __user *u_mqstat,
+			struct mq_attr __user *u_omqstat)
+{
+	int ret;
+	struct mq_attr mqstat, omqstat;
+	struct file *filp;
+	struct inode *inode;
+	struct mqueue_inode_info *info;
+
+	if (u_mqstat != NULL) {
+		if (copy_from_user(&mqstat, u_mqstat, sizeof(struct mq_attr)))
+			return -EFAULT;
+		if (mqstat.mq_flags & (~O_NONBLOCK &~O_TASK_SUSPEND_FIFO&~O_TASK_SUSPEND_FRONT))
+			return -EINVAL;
+	}
+
+	ret = -EBADF;
+	filp = fget(mqdes);
+	if (!filp)
+		goto out;
+
+	inode = filp->f_dentry->d_inode;
+	if (unlikely(filp->f_op != &mqueue_file_operations))
+		goto out_fput;
+	info = MQUEUE_I(inode);
+
+	spin_lock(&info->lock);
+
+	omqstat = info->attr;
+	
+	omqstat.mq_flags = filp->f_flags&O_NONBLOCK;
+	omqstat.mq_flags = omqstat.mq_flags |( filp->f_flags&O_TASK_SUSPEND_FIFO);
+	omqstat.mq_flags = omqstat.mq_flags |( filp->f_flags&O_TASK_SUSPEND_FRONT);
+
+	
+	if (u_mqstat) {
+		if (mqstat.mq_flags & O_NONBLOCK)
+			filp->f_flags |= O_NONBLOCK;
+		else
+			filp->f_flags &= ~O_NONBLOCK;
+
+		if (mqstat.mq_flags & O_TASK_SUSPEND_FIFO)
+			filp->f_flags |= O_TASK_SUSPEND_FIFO;
+		else
+			filp->f_flags &= ~O_TASK_SUSPEND_FIFO;
+
+		if (mqstat.mq_flags & O_TASK_SUSPEND_FRONT)
+			filp->f_flags |= O_TASK_SUSPEND_FRONT;
+		else
+			filp->f_flags &= ~O_TASK_SUSPEND_FRONT;
+		
+		inode->i_atime = inode->i_ctime = CURRENT_TIME;
+
+		info->attr.mq_flags = filp->f_flags&(O_NONBLOCK|O_TASK_SUSPEND_FIFO|O_TASK_SUSPEND_FRONT);
+	}
+
+	spin_unlock(&info->lock);
+
+	ret = 0;
+	if (u_omqstat != NULL && copy_to_user(u_omqstat, &omqstat,
+						sizeof(struct mq_attr)))
+		ret = -EFAULT;
+
+out_fput:
+	fput(filp);
+out:
+	return ret;
+}
+#else
 asmlinkage long sys_mq_getsetattr(mqd_t mqdes,
 			const struct mq_attr __user *u_mqstat,
 			struct mq_attr __user *u_omqstat)
@@ -1124,7 +1240,7 @@ out_fput:
 out:
 	return ret;
 }
-
+#endif
 static struct inode_operations mqueue_dir_inode_operations = {
 	.lookup = simple_lookup,
 	.create = mqueue_create,

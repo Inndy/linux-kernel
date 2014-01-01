@@ -10,9 +10,9 @@
  *
  * Based on spia.c by Steven J. Hill
  *
- * $Id: tx4938ndfmc.c,v 1.4 2004/10/05 13:50:20 gleixner Exp $
+ * $Id: tx4938ndfmc.c,v 1.5 2005/11/07 11:14:31 gleixner Exp $
  *
- * Copyright (C) 2000-2001 Toshiba Corporation 
+ * Copyright (C) 2000-2001 Toshiba Corporation
  *
  * 2003 (c) MontaVista Software, Inc. This file is licensed under the
  * terms of the GNU General Public License version 2. This program is
@@ -51,11 +51,11 @@ static struct mtd_info *tx4938ndfmc_mtd;
 #define SIZE_OF_ZONE		(NUMBER_OF_BLOCK_PER_ZONE * SIZE_OF_BLOCK)
 #ifndef CONFIG_MTD_CMDLINE_PARTS
 /*
- * You can use the following sample of MTD partitions 
+ * You can use the following sample of MTD partitions
  * on the NAND Flash Memory 32MB or more.
  *
  * The following figure shows the image of the sample partition on
- * the 32MB NAND Flash Memory. 
+ * the 32MB NAND Flash Memory.
  *
  *   Block No.
  *    0 +-----------------------------+ ------
@@ -236,19 +236,19 @@ static void tx4938ndfmc_nand_command (struct mtd_info *mtd, unsigned command, in
 			this->write_byte(mtd, (unsigned char) (page_addr & 0xff));
 			this->write_byte(mtd, (unsigned char) ((page_addr >> 8) & 0xff));
 			/* One more address cycle for higher density devices */
-			if (mtd->size & 0x0c000000) 
+			if (mtd->size & 0x0c000000)
 				this->write_byte(mtd, (unsigned char) ((page_addr >> 16) & 0x0f));
 		}
 		/* Latch in address */
 		this->hwcontrol(mtd, NAND_CTL_CLRALE);
 	}
-	
-	/* 
-	 * program and erase have their own busy handlers 
+
+	/*
+	 * program and erase have their own busy handlers
 	 * status and sequential in needs no delay
 	*/
 	switch (command) {
-			
+
 	case NAND_CMD_PAGEPROG:
 		/* Turn off WE */
 		this->hwcontrol (mtd, NAND_CTL_CLRWP);
@@ -265,7 +265,7 @@ static void tx4938ndfmc_nand_command (struct mtd_info *mtd, unsigned command, in
 		return;
 
 	case NAND_CMD_RESET:
-		if (this->dev_ready)	
+		if (this->dev_ready)
 			break;
 		this->hwcontrol(mtd, NAND_CTL_SETCLE);
 		this->write_byte(mtd, NAND_CMD_STATUS);
@@ -273,18 +273,18 @@ static void tx4938ndfmc_nand_command (struct mtd_info *mtd, unsigned command, in
 		while ( !(this->read_byte(mtd) & 0x40));
 		return;
 
-	/* This applies to read commands */	
+	/* This applies to read commands */
 	default:
-		/* 
+		/*
 		 * If we don't have access to the busy pin, we apply the given
 		 * command delay
 		*/
 		if (!this->dev_ready) {
 			udelay (this->chip_delay);
 			return;
-		}	
+		}
 	}
-	
+
 	/* wait until command is processed */
 	while (!this->dev_ready(mtd));
 }

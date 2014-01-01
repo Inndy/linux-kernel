@@ -266,10 +266,14 @@ static int mmap_kmem(struct file * file, struct vm_area_struct * vma)
 	 *
 	 * RED-PEN: vmalloc is not supported right now.
 	 */
-	if (!pfn_valid(vma->vm_pgoff))
-		return -EIO;
+
+//#ifndef CONFIG_MIPS_BRCM97XXX
 	val = (u64)vma->vm_pgoff << PAGE_SHIFT;
 	vma->vm_pgoff = __pa(val) >> PAGE_SHIFT;
+//#endif
+/* THT: Applied Steven Rostedt's 2.6.13 patch dated 8/11/05 */
+	if (!pfn_valid(vma->vm_pgoff))
+		return -EIO;
 	return mmap_mem(file, vma);
 }
 

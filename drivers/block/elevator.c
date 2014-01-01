@@ -54,6 +54,13 @@ inline int elv_rq_merge_ok(struct request *rq, struct bio *bio)
 	if (bio_data_dir(bio) != rq_data_dir(rq))
 		return 0;
 
+#if defined (CONFIG_MIPS_BCM7440)
+	/* Cannot merge directIO to non-directO requests */
+	if (test_bit(__REQ_DIRECTIO, &rq->flags) !=
+		test_bit(BIO_DIRECT, &bio->bi_flags) )
+		return 0;
+#endif
+
 	/*
 	 * same device and no special stuff set, merge is ok
 	 */

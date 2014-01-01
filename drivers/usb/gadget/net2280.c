@@ -448,7 +448,8 @@ net2280_free_request (struct usb_ep *_ep, struct usb_request *_req)
 #elif	defined(CONFIG_PPC) && !defined(CONFIG_NOT_COHERENT_CACHE)
 #define USE_KMALLOC
 
-#elif	defined(CONFIG_MIPS) && !defined(CONFIG_NONCOHERENT_IO)
+#elif	defined(CONFIG_MIPS) && \
+	(defined(CONFIG_DMA_COHERENT) || defined(CONFIG_DMA_IP27))
 #define USE_KMALLOC
 
 /* FIXME there are other cases, including an x86-64 one ...  */
@@ -483,7 +484,7 @@ net2280_alloc_buffer (
 		/* the main problem with this call is that it wastes memory
 		 * on typical 1/N page allocations: it allocates 1-N pages.
 		 */
-#warning Using dma_alloc_coherent even with buffers smaller than a page.
+// THT We are not going this path for MIPS #warning Using dma_alloc_coherent even with buffers smaller than a page.
 		retval = dma_alloc_coherent(&ep->dev->pdev->dev,
 				bytes, dma, gfp_flags);
 	} else
@@ -1864,8 +1865,8 @@ static void usb_reset (struct net2280 *dev)
 		if (ep->dma)
 			abort_dma (ep);
 	}
-	writel (~0, &dev->regs->irqstat0),
-	writel (~(1 << SUSPEND_REQUEST_INTERRUPT), &dev->regs->irqstat1),
+	writel (~0, &dev->regs->irqstat0);
+	writel (~(1 << SUSPEND_REQUEST_INTERRUPT), &dev->regs->irqstat1);
 
 	/* reset, and enable pci */
 	tmp = readl (&dev->regs->devinit)

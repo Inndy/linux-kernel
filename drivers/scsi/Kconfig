@@ -423,11 +423,13 @@ config SCSI_SATA_AHCI
 	  If unsure, say N.
 
 config SCSI_SATA_SVW
-	tristate "ServerWorks Frodo / Apple K2 SATA support"
-	depends on SCSI_SATA && PCI
+	tristate "Broadcom|ServerWorks Frodo / Apple K2 /BCM97XXX SATA support (EXPERIMENTAL)"
+	depends on SCSI_SATA && PCI && MIPS_BCM7038
+	default y if !BLK_DEV_IDE_SATA
 	help
 	  This option enables support for Broadcom/Serverworks/Apple K2
 	  SATA support.
+	  This option cannot be enabled together with the IDE SATA configuration.
 
 	  If unsure, say N.
 
@@ -486,6 +488,15 @@ config SCSI_SATA_SIS
 	depends on SCSI_SATA && PCI && EXPERIMENTAL
 	help
 	  This option enables support for SiS Serial ATA 964/180.
+
+	  If unsure, say N.
+
+config SCSI_SATA_SVW
+	tristate "ServerWorks Frodo / Apple K2 SATA support"
+	depends on SCSI_SATA && PCI
+	help
+	  This option enables support for Broadcom/Serverworks/Apple K2
+	  SATA support.
 
 	  If unsure, say N.
 

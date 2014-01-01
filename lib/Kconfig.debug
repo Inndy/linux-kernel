@@ -119,6 +119,7 @@ config DEBUG_BUGVERBOSE
 config DEBUG_INFO
 	bool "Compile the kernel with debug info"
 	depends on DEBUG_KERNEL
+	default y if KGDB
 	help
           If you say Y here the resulting kernel image will include
 	  debugging info resulting in a larger kernel image.
@@ -151,11 +152,230 @@ config DEBUG_FS
 
 config FRAME_POINTER
 	bool "Compile the kernel with frame pointers"
-	depends on DEBUG_KERNEL && ((X86 && !X86_64) || CRIS || M68K || M68KNOMMU || FRV || UML)
+	depends on DEBUG_KERNEL && ((X86 && !X86_64) || CRIS || M68K || M68KNOMMU || FRV || UML || SUPERH)
 	default y if DEBUG_INFO && UML
+	default y if KGDB
 	help
 	  If you say Y here the resulting kernel image will be slightly larger
 	  and slower, but it will give very useful debugging information.
 	  If you don't debug the kernel, you can say N, but we may not be able
 	  to solve problems without frame pointers.
 
+config KGDB
+	bool "KGDB: kernel debugging with remote gdb"
+	depends on DEBUG_KERNEL && (ARM || X86 || MIPS32 || PPC64 || (SUPERH && !SUPERH64) || IA64 || X86_64 || ((!SMP || BROKEN) && PPC32))
+	help
+	  If you say Y here, it will be possible to remotely debug the
+	  kernel using gdb. It is strongly suggested that you enable
+	  DEBUG_INFO, and if available on your platform, FRAME_POINTER.
+	  Documentation of kernel debugger available at
+	  http://kgdb.sourceforge.net as well as in DocBook form
+	  in Documentation/DocBook/.  If unsure, say N.
+
+config KGDB_CONSOLE
+	bool "KGDB: Console messages through gdb"
+	depends on KGDB
+	  help
+	    If you say Y here, console messages will appear through gdb.
+	    Other consoles such as tty or ttyS will continue to work as usual.
+	    Note, that if you use this in conjunction with KGDB_ETH, if the
+	    ethernet driver runs into an error condition during use with KGDB
+	    it is possible to hit an infinite recusrion, causing the kernel
+	    to crash, and typically reboot.  For this reason, it is preferable
+	    to use NETCONSOLE in conjunction with KGDB_ETH instead of
+	    KGDB_CONSOLE.
+
+choice
+	prompt "Method for KGDB communication"
+	depends on KGDB
+	default KGDB_ONLY_MODULES
+	default KGDB_ARM_VERSATILE if ARCH_VERSATILE
+	default KGDB_SIBYTE if SIBYTE_SB1xxx_SOC
+	default KGDB_MPSC if SERIAL_MPSC
+	default KGDB_PXA_SERIAL if ARCH_PXA
+	default KGDB_BRCM97XXX if MIPS_BRCM97XXX
+	help
+	  There are a number of different ways in which you can communicate
+	  with KGDB.  The most common is via serial, with the 8250 driver
+	  (should your hardware have an 8250, or ns1655x style uart).
+	  Another option is to use the NETPOLL framework and UDP, should
+	  your ethernet card support this.  Other options may exist.
+	  You can elect to have one core I/O driver that is built into the
+	  kernel for debugging as the kernel is booting, or using only
+	  kernel modules.
+
+config KGDB_ONLY_MODULES
+	bool "KGDB: Use only kernel modules for I/O"
+	help
+	  Use only kernel modules to configure KGDB I/O after the
+	  kernel is booted.
+
+config KGDB_8250_NOMODULE
+	bool "KGDB: On generic serial port (8250)"
+	select KGDB_8250
+	help
+	  Uses generic serial port (8250) to communicate with the host
+	  GDB.  This is independent of the normal (SERIAL_8250) driver
+	  for this chipset.
+
+config KGDBOE_NOMODULE
+	bool "KGDB: On ethernet - in kernel"
+	select KGDBOE
+	select NETPOLL
+	select NETPOLL_TRAP
+	select NETPOLL_RX
+	help
+	  Uses the NETPOLL API to communicate with the host GDB via UDP.
+	  In order for this to work, the ethernet interface specified must
+	  support the NETPOLL API, and this must be initialized at boot.
+	  See the documentation for syntax.
+
+config KGDB_MPSC
+	bool "KGDB on MV64x60 MPSC"
+	depends on SERIAL_MPSC
+	help
+	  Uses a Marvell GT64260B or MV64x60 Multi-Purpose Serial
+	  Controller (MPSC) channel. Note that the GT64260A is not
+	  supported.
+
+config KGDB_SIBYTE
+	bool "KGDB: On the Broadcom SWARM serial port"
+	depends on MIPS && SIBYTE_SB1xxx_SOC
+
+config KGDB_BRCM97XXX
+	bool "KGDB: On the Broadcom bcm97xxx serial port"
+	depends on MIPS
+    depends on MIPS_BRCM97XXX && KGDB
+	help
+	  Enables the KGDB serial driver for the Broadcom bcm97xxx boards
+
+config KGDB_ARM_VERSATILE
+	bool "KGDB: On ARM Versatile"
+	depends on ARM && ARCH_VERSATILE
+	help
+	  Enables the KGDB serial driver for the ARM Versatile
+
+config KGDB_PXA_SERIAL
+	bool "KGDB: On the PXA2xx serial port"
+	depends on ARCH_PXA
+
+config KGDB_SH_SCI
+	bool "KGDB: On SH SCI(F) serial port"
+	depends on SUPERH && SERIAL_SH_SCI
+	help
+	  Uses the SCI(F) serial port found on the board.
+
+endchoice
+
+config KGDBOE
+	tristate "KGDB: On ethernet" if !KGDBOE_NOMODULE
+	depends on m && KGDB_ONLY_MODULES
+	select NETPOLL
+	select NETPOLL_TRAP
+	select NETPOLL_RX
+	help
+	  Uses the NETPOLL API to communicate with the host GDB via UDP.
+	  In order for this to work, the ethernet interface specified must
+	  support the NETPOLL API, and this must be initialized at boot.
+	  See the documentation for syntax.
+
+config KGDB_8250
+	tristate "KGDB: On generic serial port (8250)" if !KGDB_8250_NOMODULE
+	depends on m && KGDB_ONLY_MODULES
+	help
+	  Uses generic serial port (8250) to communicate with the host
+	  GDB.  This is independent of the normal (SERIAL_8250) driver
+	  for this chipset.
+
+config KGDB_SIMPLE_SERIAL
+	bool "Simple selection of KGDB serial port"
+	depends on KGDB_8250 || KGDB_SH_SCI
+	help
+	  If you say Y here, you will only have to pick the baud rate
+	  and serial port (ttyS) that you wish to use for KGDB.  If you
+	  say N, you will have provide the I/O port and IRQ number.  Note
+	  that if your serial ports are iomapped, such as on ia64, then
+	  you must say Y here.  If in doubt, say Y.
+
+choice
+    	prompt "Debug serial port BAUD"
+	depends on KGDB_8250 || KGDB_SH_SCI
+	default KGDB_115200BAUD
+	help
+	  gdb and the kernel stub need to agree on the baud rate to be
+	  used.  Standard rates from 9600 to 115200 are allowed, and this
+	  may be overridden via the commandline.
+
+config KGDB_9600BAUD
+	bool "9600"
+
+config KGDB_19200BAUD
+	bool "19200"
+
+config KGDB_38400BAUD
+	bool "38400"
+
+config KGDB_57600BAUD
+	bool "57600"
+
+config KGDB_115200BAUD
+	bool "115200"
+endchoice
+
+choice
+	prompt "Serial port for KGDB"
+	depends on KGDB_SIMPLE_SERIAL
+	default KGDB_PORT_0
+
+config KGDB_PORT_0
+	bool "Primary serial port"
+
+config KGDB_PORT_1
+	bool "First serial port"
+
+config KGDB_PORT_2
+	bool "Second serial port"
+
+config KGDB_PORT_3
+	bool "Third serial port"
+endchoice
+
+choice
+	prompt "PXA serial UART for KGDB"
+	depends on KGDB_PXA_SERIAL
+	default KGDB_PXA_FFUART
+
+config KGDB_PXA_FFUART
+	bool "FFUART"
+
+config KGDB_PXA_BTUART
+	bool "BTUART"
+
+config KGDB_PXA_STUART
+	bool "STUART"
+
+endchoice
+
+config KGDB_PXA_BAUDRATE
+	int "UART baudrate for KGDB"
+	depends on KGDB_PXA_SERIAL
+	default "115200"
+
+config KGDB_PORT
+	hex "hex I/O port address of the debug serial port"
+	depends on !KGDB_SIMPLE_SERIAL && KGDB_8250 && !IA64
+	default 3f8
+	help
+	  This is the unmapped (and on platforms with 1:1 mapping
+	  this is typically, but not always the same as the mapped)
+	  address of the serial port.  The stanards on your architecture
+	  may be found in include/asm-$(ARCH)/serial.h.
+
+config KGDB_IRQ
+	int "IRQ of the debug serial port"
+	depends on !KGDB_SIMPLE_SERIAL && KGDB_8250 && !IA64
+	default 4
+	help
+	  This is the IRQ for the debug port.  This must be known so that
+	  KGDB can interrupt the running system (either for a new
+	  connection or when in gdb and control-C is issued).

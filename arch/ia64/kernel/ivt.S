@@ -69,6 +69,13 @@
 # define DBG_FAULT(i)
 #endif
 
+#ifdef	CONFIG_KGDB
+#define	KGDB_ENABLE_PSR_DB mov r31=psr;; movl r30=IA64_PSR_DB;; or r31=r31,r30;; \
+		mov psr.l=r31;; srlz.i;;
+#else
+#define	KGDB_ENABLE_PSR_DB
+#endif
+
 #define MINSTATE_VIRT	/* needed by minstate.h */
 #include "minstate.h"
 
@@ -474,6 +481,7 @@ ENTRY(page_fault)
 	movl r14=ia64_leave_kernel
 	;;
 	SAVE_REST
+	KGDB_ENABLE_PSR_DB
 	mov rp=r14
 	;;
 	adds out2=16,r12			// out2 = pointer to pt_regs
@@ -779,6 +787,7 @@ ENTRY(interrupt)
 	srlz.i			// ensure everybody knows psr.ic is back on
 	;;
 	SAVE_REST
+	KGDB_ENABLE_PSR_DB
 	;;
 	alloc r14=ar.pfs,0,0,2,0 // must be first in an insn group
 	mov out0=cr.ivr		// pass cr.ivr as first arg
@@ -1022,6 +1031,7 @@ ENTRY(non_syscall)
 	movl r15=ia64_leave_kernel
 	;;
 	SAVE_REST
+	KGDB_ENABLE_PSR_DB
 	mov rp=r15
 	;;
 	br.call.sptk.many b6=ia64_bad_break	// avoid WAW on CFM and ignore return addr
@@ -1055,6 +1065,7 @@ ENTRY(dispatch_unaligned_handler)
 	adds r3=8,r2				// set up second base pointer
 	;;
 	SAVE_REST
+	KGDB_ENABLE_PSR_DB
 	movl r14=ia64_leave_kernel
 	;;
 	mov rp=r14
@@ -1097,6 +1108,10 @@ ENTRY(dispatch_to_fault_handler)
 	adds r3=8,r2				// set up second base pointer for SAVE_REST
 	;;
 	SAVE_REST
+	cmp.eq p6,p0=29,out0
+(p6)	br.cond.spnt 1f;;			// debug_vector
+	KGDB_ENABLE_PSR_DB
+1:
 	movl r14=ia64_leave_kernel
 	;;
 	mov rp=r14

@@ -1008,7 +1008,11 @@ extern struct sk_buff *__dev_alloc_skb(unsigned int length, int gfp_mask);
  */
 static inline struct sk_buff *dev_alloc_skb(unsigned int length)
 {
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	return __dev_alloc_skb(length, GFP_ATOMIC | GFP_DMA);
+#else
 	return __dev_alloc_skb(length, GFP_ATOMIC);
+#endif
 }
 
 /**

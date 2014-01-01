@@ -433,6 +433,9 @@ int __netpoll_rx(struct sk_buff *skb)
 
 	if (!np->rx_hook)
 		goto out;
+
+/* atomic_set(&skb->users, 1); RYH */
+
 	if (skb->dev->type != ARPHRD_ETHER)
 		goto out;
 
@@ -448,8 +451,11 @@ int __netpoll_rx(struct sk_buff *skb)
 		goto out;
 	if (skb->pkt_type == PACKET_OTHERHOST)
 		goto out;
+
+#if 0	/* RYH */
 	if (skb_shared(skb))
 		goto out;
+#endif
 
 	iph = (struct iphdr *)skb->data;
 	if (!pskb_may_pull(skb, sizeof(struct iphdr)))
@@ -485,7 +491,8 @@ int __netpoll_rx(struct sk_buff *skb)
 
 	np->rx_hook(np, ntohs(uh->source),
 		    (char *)(uh+1),
-		    ulen - sizeof(struct udphdr));
+		    ulen - sizeof(struct udphdr),
+		    skb);
 
 	kfree_skb(skb);
 	return 1;

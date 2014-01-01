@@ -267,6 +267,10 @@ __do_page_cache_readahead(struct address_space *mapping, struct file *filp,
 	if (isize == 0)
 		goto out;
 
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+	set_gfp_dma_flag(mapping);
+#endif
+
  	end_index = ((isize - 1) >> PAGE_CACHE_SHIFT);
 
 	/*

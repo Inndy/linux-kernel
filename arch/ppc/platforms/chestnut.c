@@ -496,7 +496,7 @@ chestnut_power_off(void)
 static void __init
 chestnut_map_io(void)
 {
-#if defined(CONFIG_SERIAL_TEXT_DEBUG) || defined(CONFIG_KGDB)
+#if defined(CONFIG_SERIAL_TEXT_DEBUG) || defined(CONFIG_KGDB_8250)
 	io_block_mapping(CHESTNUT_UART_BASE, CHESTNUT_UART_BASE, 0x100000,
 		_PAGE_IO);
 #endif
@@ -570,9 +570,6 @@ platform_init(unsigned long r3, unsigned long r4, unsigned long r5,
 
 #if defined(CONFIG_SERIAL_TEXT_DEBUG)
 	ppc_md.progress = gen550_progress;
-#endif
-#if defined(CONFIG_KGDB)
-	ppc_md.kgdb_map_scc = gen550_kgdb_map_scc;
 #endif
 
 	if (ppc_md.progress)

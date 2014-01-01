@@ -1,5 +1,5 @@
 /*
- * $Id: physmap.c,v 1.37 2004/11/28 09:40:40 dwmw2 Exp $
+ * $Id: physmap.c,v 1.39 2005/11/29 14:49:36 gleixner Exp $
  *
  * Normal mappings of chips in physical memory
  *
@@ -19,11 +19,60 @@
 #include <linux/mtd/map.h>
 #include <linux/config.h>
 #include <linux/mtd/partitions.h>
+#include <linux/mtd/physmap.h>
 
 static struct mtd_info *mymtd;
 
+#ifdef CONFIG_HUMAX_CONTROL_VPP
+#include <linux/delay.h>
+void phys_map_set_vpp(struct map_info *map, int iVal)
+{
+/*
+ * It is supposed that VPP pin is connected to GPIO_31.
+ *
+ * 081223 dcchung
+ */
+	
+#define GIO_DATA_LO		0x10400704
+#define GIO_IODIR_LO	0x10400708
+#define PIN_MUX_CTRL_9	0x104040b8
+	
+	volatile unsigned int* pulIoData=GIO_DATA_LO;
+	volatile unsigned int* pulIoDir=GIO_IODIR_LO;
+	volatile unsigned int* pulPinmuxCtrl9=PIN_MUX_CTRL_9;
+
+	// set GPIO_31
+	*(volatile unsigned int *)KSEG1ADDR(pulPinmuxCtrl9)&=~0x000001c0;
+	// SET GPIO_31 to OUTPUT
+	*(volatile unsigned int *)KSEG1ADDR(pulIoDir)&=~0x80000000;
+	if (iVal==1)
+	{
+		*(volatile unsigned int *)KSEG1ADDR(pulIoData)|=0x80000000;
+		// It takes time for VPP(GPIO_31) to go up to HIGH level.		
+		// For this reason, put "delay" here.
+		udelay(10);
+		//printk("VPP Enabled:%08lx\n", *(volatile unsigned int *)KSEG1ADDR(pulIoData));
+	}
+	else
+	{
+		*(volatile unsigned int *)KSEG1ADDR(pulIoData)&=~0x80000000;
+		//printk("VPP Disabled:%08lx\n", *(volatile unsigned int *)KSEG1ADDR(pulIoData));
+	}
+
+#undef GIO_DATA_LO		
+#undef GIO_IODIR_LO	
+#undef PIN_MUX_CTRL_9	
+}
+#endif
+
+
 struct map_info physmap_map = {
 	.name = "phys_mapped_flash",
+
+#ifdef CONFIG_HUMAX_CONTROL_VPP
+	set_vpp: phys_map_set_vpp,
+#endif
+
 	.phys = CONFIG_MTD_PHYSMAP_START,
 	.size = CONFIG_MTD_PHYSMAP_LEN,
 	.bankwidth = CONFIG_MTD_PHYSMAP_BANKWIDTH,
@@ -69,7 +118,7 @@ static int __init init_physmap(void)
 		mymtd->owner = THIS_MODULE;
 
 #ifdef CONFIG_MTD_PARTITIONS
-		mtd_parts_nb = parse_mtd_partitions(mymtd, part_probes, 
+		mtd_parts_nb = parse_mtd_partitions(mymtd, part_probes,
 						    &mtd_parts, 0);
 
 		if (mtd_parts_nb > 0)
@@ -78,9 +127,9 @@ static int __init init_physmap(void)
 			return 0;
 		}
 
-		if (num_physmap_partitions != 0) 
+		if (num_physmap_partitions != 0)
 		{
-			printk(KERN_NOTICE 
+			printk(KERN_NOTICE
 			       "Using physmap partition definition\n");
 			add_mtd_partitions (mymtd, physmap_partitions, num_physmap_partitions);
 			return 0;

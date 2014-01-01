@@ -13,6 +13,9 @@
 #include <linux/rbtree.h>
 #include <linux/prio_tree.h>
 #include <linux/fs.h>
+#ifdef CONFIG_DISCONTIGMEM
+#include <asm/mmzone.h>
+#endif
 
 struct mempolicy;
 struct anon_vma;
@@ -37,7 +40,9 @@ extern int sysctl_legacy_va_layout;
 #include <asm/processor.h>
 #include <asm/atomic.h>
 
+#ifndef CONFIG_DISCONTIGMEM
 #define nth_page(page,n) pfn_to_page(page_to_pfn((page)) + (n))
+#endif
 
 /*
  * Linux kernel virtual memory manager primitives.
@@ -424,6 +429,109 @@ static inline void set_page_zone(struct page *page, unsigned long nodezone_num)
 	page->flags |= nodezone_num << NODEZONE_SHIFT;
 }
 
+
+#ifdef CONFIG_DISCONTIGMEM
+static __inline__ struct page *
+pfn_to_page(unsigned long  pfn) 
+{
+
+       int i;
+       unsigned long first, last;
+
+       for (i = 0; i < numnodes; i++) {
+               first = NODE_DATA(i)->node_start_pfn;
+               last = first + NODE_DATA(i)->node_spanned_pages;
+
+               if (pfn >= first && pfn < last) {
+                       return( NODE_MEM_MAP(i) + (pfn - first));
+               }
+       }
+       return((struct page *)0);
+}
+
+static __inline__ unsigned long 
+page_to_pfn( struct page *p)
+{                                                                      
+       int i;
+       struct page *first, *last;
+
+       for (i = 0; i < numnodes; i++) {
+               first = NODE_MEM_MAP(i);
+               last = first + NODE_DATA(i)->node_spanned_pages;
+
+               if  (p >= first && p < last) {
+                       return( NODE_DATA(i)->node_start_pfn + (p - first));
+               }
+       }
+       printk(KERN_WARNING "page_to_pfn: page 0x%p not found\n", p);
+       return(0);
+}
+#if defined ( CONFIG_MIPS_BCM97438 ) || defined ( CONFIG_MIPS_BCM7440 )
+#define set_gfp_dma_flag(mapping) \
+       set_gfp_dma_flag_debug(mapping, __FILE__, __LINE__)
+
+extern int is_hd(dev_t);       
+extern int      cache_debug;
+
+static inline int 
+set_gfp_dma_flag_debug (struct address_space *mapping, char* file, int lineno)
+{
+    struct block_device *bdev;
+    dev_t          dev;
+
+    BUG_ON(!mapping);
+
+    /*
+     * HACK HACK HACK: If we are reading from a page, be sure to turn on GFP_DMA
+     */
+    if (mapping->host == (struct inode *)0) {
+       if (cache_debug)
+           printk(KERN_WARNING "set_gfp_dma_flag: mapping->host == NULL\n");
+       return(0);
+    }
+
+    if (mapping->host->i_sb) {
+       dev = mapping->host->i_sb->s_dev;
+
+       if (is_hd(dev)) {
+               if (cache_debug)
+                   printk(KERN_WARNING "set_gfp_dma_flag: at %s: %d dev= %d,%d\n",
+                               file, lineno, MAJOR(dev), MINOR(dev));
+           mapping->flags &= ~GFP_ZONEMASK;
+           mapping->flags |= GFP_DMA;
+           return 1;
+       }
+    }
+
+    bdev = mapping->host->i_bdev;
+
+    if (!bdev) {
+       if (cache_debug)
+           printk(KERN_WARNING "set_gfp_dma_flag: bdev == NULL at %s: %d\n",
+               file, lineno);
+       return(0);
+    }
+    dev = bdev->bd_dev;
+
+    if (cache_debug)
+       printk(KERN_WARNING "set_gfp_dma_flag: dev = (%d,%d), before=%08lx\n",
+              MAJOR(dev), MINOR(dev), mapping->flags);
+
+    if (is_hd(dev)) {
+       mapping->flags &= ~GFP_ZONEMASK;
+       mapping->flags |= GFP_DMA;
+       if (cache_debug)
+           printk(KERN_WARNING "After: %08lx, DMA flag turned on at %s:%d\n",
+                  mapping->flags & __GFP_BITS_MASK, file, lineno);
+       return 1;
+    }
+    
+    return 0;
+}
+#endif /* CONFIG_MIPS_BCM97438 */
+#endif
+
+
 #ifndef CONFIG_DISCONTIGMEM
 /* The array of struct pages - for discontigmem use pgdat->lmem_map */
 extern struct page *mem_map;
@@ -439,6 +547,7 @@ static inline void *lowmem_page_address(struct page *page)
 #endif
 
 #if defined(WANT_PAGE_VIRTUAL)
+#warning --- WANT_PAGE_VIRTUAL ON
 #define page_address(page) ((page)->virtual)
 #define set_page_address(page, address)			\
 	do {						\
@@ -448,6 +557,7 @@ static inline void *lowmem_page_address(struct page *page)
 #endif
 
 #if defined(HASHED_PAGE_VIRTUAL)
+#warning --- HASHED_PAGE_VIRTUAL ON
 void *page_address(struct page *page);
 void set_page_address(struct page *page, void *virtual);
 void page_address_init(void);

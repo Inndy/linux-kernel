@@ -23,6 +23,10 @@
  * used or exposed by Host Controller Drivers.
  */
 
+#ifdef CONFIG_USB_BRCM
+#include "../host/brcmusb.h"
+#endif
+
 /*
  * USB Packet IDs (PIDs)
  */

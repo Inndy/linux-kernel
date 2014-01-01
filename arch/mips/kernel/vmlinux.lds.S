@@ -54,13 +54,6 @@ SECTIONS
 
     *(.data)
 
-   /* Align the initial ramdisk image (INITRD) on page boundaries. */
-   . = ALIGN(4096);
-   __rd_start = .;
-   *(.initrd)
-   . = ALIGN(4096);
-   __rd_end = .;
-
     CONSTRUCTORS
   }
   _gp = . + 0x8000;
@@ -96,12 +89,6 @@ SECTIONS
   .init.setup : { *(.init.setup) }
   __setup_end = .;
 
-  .early_initcall.init : {
-  __earlyinitcall_start = .;
-	*(.initcall.early1.init)
-  }
-  __earlyinitcall_end = .;
-
   __initcall_start = .;
   .initcall.init : {
 	*(.initcall1.init)
@@ -118,10 +105,6 @@ SECTIONS
   .con_initcall.init : { *(.con_initcall.init) }
   __con_initcall_end = .;
   SECURITY_INIT
-  . = ALIGN(4096);
-  __initramfs_start = .;
-  .init.ramfs : { *(.init.ramfs) }
-  __initramfs_end = .;
   . = ALIGN(32);
   __per_cpu_start = .;
   .data.percpu  : { *(.data.percpu) }
@@ -129,6 +112,12 @@ SECTIONS
   . = ALIGN(4096);
   __init_end = .;
   /* freed after init ends here */
+  /* THT Moved down here to avoid double free */
+    . = ALIGN(4096);
+  __initramfs_start = .;
+  .init.ramfs : { *(.init.ramfs) }
+    . = ALIGN(4096);
+  __initramfs_end = .;
 
   __bss_start = .;		/* BSS */
   .sbss      : {

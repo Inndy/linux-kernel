@@ -218,6 +218,7 @@ typedef enum {	ide_unknown,	ide_generic,	ide_pci,
 		ide_rz1000,	ide_trm290,
 		ide_cmd646,	ide_cy82c693,	ide_4drives,
 		ide_pmac,	ide_etrax100,	ide_acorn,
+		ide_bcm7xxx,
 		ide_forced
 } hwif_chipset_t;
 
@@ -1396,7 +1397,7 @@ int __ide_dma_off(ide_drive_t *);
 void ide_dma_verbose(ide_drive_t *);
 ide_startstop_t ide_dma_intr(ide_drive_t *);
 
-#ifdef CONFIG_BLK_DEV_IDEDMA_PCI
+#if defined( CONFIG_BLK_DEV_IDEDMA_PCI ) || defined( CONFIG_BLK_DEV_IDE_BCM7XXX )
 extern int ide_build_sglist(ide_drive_t *, struct request *);
 extern int ide_build_dmatable(ide_drive_t *, struct request *);
 extern void ide_destroy_dmatable(ide_drive_t *);
@@ -1421,7 +1422,7 @@ static inline int __ide_dma_off(ide_drive_t *drive) { return 0; }
 static inline void ide_dma_verbose(ide_drive_t *drive) { ; }
 #endif /* CONFIG_BLK_DEV_IDEDMA */
 
-#ifndef CONFIG_BLK_DEV_IDEDMA_PCI
+#if !defined( CONFIG_BLK_DEV_IDEDMA_PCI ) && !defined( CONFIG_BLK_DEV_IDE_BCM7XXX )
 static inline void ide_release_dma(ide_hwif_t *drive) {;}
 #endif
 

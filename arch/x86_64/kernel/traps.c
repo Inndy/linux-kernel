@@ -29,6 +29,7 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/nmi.h>
+#include <linux/kgdb.h>
 
 #include <asm/system.h>
 #include <asm/uaccess.h>
@@ -934,6 +935,14 @@ void __init trap_init(void)
 	 * Should be a barrier for any external CPU state.
 	 */
 	cpu_init();
+
+#ifdef CONFIG_KGDB
+	/*
+	 * Has KGDB been told to break as soon as possible?
+	 */
+	if (kgdb_initialized == -1)
+		tasklet_schedule(&kgdb_tasklet_breakpoint);
+#endif
 }
 
 
